@@ -24,8 +24,12 @@ Read `PROTOCOL.md` in the Limba repository once before starting. It is short.
 - The `limba` command line tool: in the Limba app, choose Limba > Install Command Line Tool…, which links it
   into `~/.local/bin`.
 - An OpenAI-compatible endpoint for the smoke test. Use a small cheap model: a translation that
-  reads well from it will read well from a larger one.
-- A Mac to run the app on, where the shell that runs `limba audit` has Accessibility access.
+  reads well from it will read well from a larger one. The CLI does not read the model that is set
+  in the Limba app. Pass `--endpoint`, `--model` and `--key-file`, or set `LIMBA_ENDPOINT`,
+  `LIMBA_MODEL` and `LIMBA_API_KEY`.
+- A Mac to run the app on. The terminal app that runs `limba audit` and `limba capture` needs
+  Accessibility access: add it in System Settings > Privacy & Security > Accessibility. Without it
+  both commands stop with "Accessibility access is off for this translator".
 
 Work on a branch. When you use a git worktree, copy the generated, git-ignored source files from the
 main checkout into it first (`git status --ignored` lists them): a build that includes a generated
@@ -55,7 +59,15 @@ case \.\w+: "[A-Z]                    enum display names
 NSMenuItem\(title: "|addItem\(withTitle: "|addButton\(withTitle: "
 content\.(title|body|subtitle) =      user notifications
 var errorDescription: String?         error messages shown to people
+\.help\([a-zA-Z_]                       tooltips given as a String variable
+(Picker|ColorPicker|Toggle|Button)\([a-z]\w*,   controls whose title is a String variable
+\w+(Help|Title|Label|Text): String      copy kept in properties with other names
+\.title ==|title\.contains|title\.hasPrefix   code that finds a window by its title
 ```
+
+The last pattern matters most. Code that compares a window's title with a literal breaks as soon
+as the title is translated. Match the window by its `identifier` instead, before changing anything
+else.
 
 ## 2. Add Limba
 
@@ -76,7 +88,9 @@ var errorDescription: String?         error messages shown to people
 
 2. If the app has no catalog, create `App/Localizable.xcstrings` containing
    `{"sourceLanguage":"en","strings":{},"version":"1.0"}` inside the app's source folder. With
-   synchronized folders, Xcode adds it to the target; otherwise add it to Copy Bundle Resources.
+   synchronized folders, Xcode adds it to the target. In an older project without them, add it to
+   `project.pbxproj` by hand: a file reference, a build file, an entry in the app's group and one in
+   the app target's Resources phase.
 
 3. Write `Limba/app.json` outside the synchronized source folders, so Xcode does not bundle it twice:
 
@@ -97,7 +111,9 @@ var errorDescription: String?         error messages shown to people
    meaning. Invented feature names are names: give them `"translate": false` and a note, or a small
    model turns a name like "Sub-zero" into a plain word for darkness:
    `{"term": "Sub-zero", "translate": false, "note": "dimming below 0% brightness"}`.
-   Abbreviations in capitals (OSD, DDC) stay as written without an entry. Write one entry per term:
+   Add `{"term": "Limba", "translate": false, "note": "the translator app; Translate with Limba is a command"}`,
+   since the app now shows "Translate with Limba". Abbreviations in capitals (OSD, DDC) stay as
+   written without an entry. Write one entry per term:
    an entry for "Spaces, Mission Control" matches no string.
 
 4. Start Limba before any UI exists, on the main actor:
@@ -114,11 +130,15 @@ var errorDescription: String?         error messages shown to people
    including code that strict concurrency checking treats as nonisolated.
 
 5. Add `.limba()` to every SwiftUI root, and to the root view of every hosting view that stays on
-   screen. Views that are rebuilt each time they appear (a HUD, an overlay) do not need it.
+   screen. Views that are rebuilt each time they appear (a HUD, an overlay) do not need it. The
+   content of a `MenuBarExtra` is often several views in a row: wrap them in one `Group` and put
+   `.limba()` on the group.
 
 6. Put `LimbaTranslateButton("Translate with Limba")` and then `LimbaLanguagePicker("Language").labelsHidden()`
    in one row labelled Language, built the way the app builds the rows around it. The row goes at the
-   bottom of the General pane of Settings, in a group of its own after the General settings.
+   bottom of the General pane of Settings, in a group of its own after the General settings. When the
+   settings window has no panes, it goes at the bottom of that window, in a group of its own. If the
+   window has a fixed or minimum size, make it taller so that the new row is not cut off.
 
 7. Register a screen for each Settings pane and main window:
 
@@ -133,7 +153,8 @@ var errorDescription: String?         error messages shown to people
    ```
 
    Since macOS 14, SwiftUI ignores `showSettingsWindow:`; keep the `openSettings` environment action
-   somewhere the closure can call it.
+   somewhere the closure can call it. When the settings are a `Window(id:)` scene instead of a
+   `Settings` scene, use the `openWindow` action with that id.
 
 ## 3. Route every string through the catalog
 
@@ -153,7 +174,8 @@ Change types and call sites. **Never change the wording**: the developer's words
 | an `Error` interpolated into `String(localized:)` | `String(describing: error)` inside it, which shows the same text without the compiler warning |
 | plurals built by hand: `"\(n) day\(n == 1 ? "" : "s")"` | `String(limba: "\(n) days remaining")`, then add English plural forms to the catalog (step 4) |
 | any counted string built in code: `String(localized: "\(n) windows")`, `String(format: NSLocalizedString(…), n)` | `String(limba: "\(n) windows")` or `String(limbaFormat: format, n)`. `String(localized:)` takes plural rules from the app's built-in language, so a translation never gets its forms for 2 to 19 or 0. SwiftUI `Text` under `.limba()` is already right |
-| a package view that takes a title (`LaunchAtLogin.Toggle("Launch at login")`) | its label closure: `LaunchAtLogin.Toggle { Text("Launch at login") }`. A package resolves its title in its own bundle, where translations cannot reach it |
+| a package view that takes a title (`LaunchAtLogin.Toggle("Launch at login")`), or uses its default one (`LaunchAtLogin.Toggle()`) | its label closure: `LaunchAtLogin.Toggle { Text("Launch at login") }`. A package resolves its title in its own bundle, where translations cannot reach it |
+| `.help(someString)` | make the property `LocalizedStringKey`. `.help(String)` is never looked up |
 | a placeholder whose meaning is not obvious: `"Print all %@ layers…"` | add `comment: "%@ is the app name"`. The comment reaches the model with the string |
 | text that the screen shows and the CLI, MCP or an API also returns | two properties: the English one for the API (`displayName`), and `localizedDisplayName` (`String(localized:)`) for the screen. Scripts and agents parse the English |
 | names, numbers, paths, versions, user input, key symbols | leave as `Text(verbatim:)`. They are data |
@@ -204,7 +226,8 @@ removals out of the commit when the developer wants the keys.
 Unlock the screen first. A locked screen makes the Accessibility API return no windows, and every
 check below quietly passes or fails for the wrong reason.
 
-1. Build Debug, quit any installed copy of the app, launch the build.
+1. Build Debug, quit any installed copy of the app, launch the build. Every `limba` command below
+   needs the app running: after a relaunch, wait until it is up before the next command.
 2. `limba apps`: the app is listed with its string count.
 3. `limba audit <app>`: opens every registered screen with markers on and lists each text that skips
    the catalog. Fix and repeat until only text that macOS itself draws remains ("Sidebar", standard

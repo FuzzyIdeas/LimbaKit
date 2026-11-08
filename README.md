@@ -11,6 +11,25 @@ of their choice to translate every text. The app updates in real time while they
 
 LimbaKit needs macOS 13 or later.
 
+## Adopt it with a coding agent
+
+Give your coding agent this prompt, in the folder of your app:
+
+```text
+Make this Mac app translatable with Limba.
+
+1. Clone https://github.com/FuzzyIdeas/LimbaKit to /tmp/LimbaKit and copy its Skills/limba-adopt
+   folder into your skills folder (.claude/skills/ for Claude Code). It doesn't need a commit.
+2. On a new branch, follow that skill from section 0 to section 7, in order. Skip nothing: if the
+   app has no String Catalog, create one and route every string a person reads through it.
+3. Never change the app's English wording.
+4. Build after every step that changes code, and fix every error before going on.
+5. End with the report from section 7.
+```
+
+The agent needs the free [Limba app](https://lowtechguys.com/limba) on the Mac for its checks, with
+the `limba` command line tool installed from the Limba menu.
+
 ```swift
 .package(url: "https://github.com/FuzzyIdeas/LimbaKit", from: "0.1.0")
 ```

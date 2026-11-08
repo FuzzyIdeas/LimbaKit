@@ -22,8 +22,8 @@ follows this document works with both.
 ## 1. Source strings, inside the app bundle
 
 The app copies its String Catalogs (`.xcstrings`) into `Contents/Resources/Limba/`, byte for byte.
-The copy is a separate *Copy Files* build phase with destination *Resources* and subpath `Limba`,
-because Xcode compiles catalogs listed under *Copy Bundle Resources*. One catalog per table:
+The copy is a separate build phase, either *Copy Files* with destination *Resources* and subpath
+`Limba`, or a Run Script phase, because Xcode compiles catalogs listed under *Copy Bundle Resources*. One catalog per table:
 `Localizable.xcstrings` is the table named `Localizable`, `InfoPlist.xcstrings` is `InfoPlist`, and so on.
 
 The catalog format is Xcode's String Catalog JSON. Translators read these fields:
