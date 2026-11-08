@@ -5,7 +5,7 @@ description: Make a macOS app translatable by the people who use it, with Limba.
 
 # Make a Mac app translatable with Limba
 
-Limba lets people translate an app into their own language with any AI model, while the app runs.
+Limba lets the users of an app translate it into their own language with any AI model, while the app runs.
 The developer's part is small but has to be complete: every string a person reads must come from the
 app's String Catalog, or no translator can reach it.
 
@@ -71,7 +71,7 @@ var errorDescription: String?         error messages shown to people
    and the manifest to `Contents/Resources/Limba/` unprocessed. Xcode compiles catalogs listed under
    Copy Bundle Resources, which is why a plain resource does not work. `--package` also takes a local
    path relative to the project folder. It only adds lines to `project.pbxproj`, so the diff stays
-   small next to other work in progress, and running it twice changes nothing.
+   small next to other work in progress. Running it twice changes nothing.
 
 2. If the app has no catalog, create `App/Localizable.xcstrings` containing
    `{"sourceLanguage":"en","strings":{},"version":"1.0"}` inside the app's source folder. With
@@ -188,7 +188,7 @@ When the export fails on another target (a CLI target without an Info.plist, for
 `xcrun xcstringstool sync` updates the catalog from the `.stringsdata` files of a build instead.
 
 The export builds without `DEBUG`, so it drops keys that only `#if DEBUG` code uses. Debug-only text
-doesn't need a translation, but look at `git diff` on the catalog before committing, and keep those
+doesn't need a translation. Look at `git diff` on the catalog before committing, and keep those
 removals out of the commit when the developer wants the keys.
 
 - Add English plural forms wherever the code used to pluralize by hand. A plural applies to a string
@@ -232,7 +232,7 @@ check below quietly passes or fails for the wrong reason.
 - App Intents text (Shortcuts actions and their parameters) is read by the system from the app's
   compiled strings, so a Limba translation cannot reach it. It stays in the catalog for the
   localizations that ship inside the app.
-- `String(localized:)` with a count uses the plural rules of the user's region; SwiftUI `Text` uses
+- `String(localized:)` with a count uses the plural rules of the app's built-in language; SwiftUI `Text` uses
   those of the translation. Prefer SwiftUI for counted strings.
 - Text that the app computes once and keeps updates when its view renders again. Code that needs the new text sooner can
   listen for `.limbaDidChange`.

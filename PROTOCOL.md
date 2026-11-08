@@ -1,7 +1,7 @@
 # Limba protocol, version 1
 
-Limba lets the people who use a Mac app translate it into their own language, with the AI model
-or service they choose, and edit the result. The developer ships the app in one language. A separate
+Limba lets the users of a Mac app translate it into their own language with the AI model
+or service they choose. They can edit the result. The developer ships the app in one language. A separate
 translator tool writes the translations, and the app picks them up while it runs.
 
 The protocol has three parts, and each uses formats that Xcode already produces:
@@ -58,7 +58,7 @@ When a key has no source value, the key itself is the source text, which is how 
 
 `description` and `context` are prose for the translation model. A glossary entry with `"translate":
 false` stays in the source language. Other entries explain a term so that the model picks the right
-meaning. The person translating can add their own notes on top, and those stay with their translator.
+meaning. The person translating can add their own notes on top. Those notes stay with their translator.
 
 A longer text can go in `Contents/Resources/Limba/context.md`, which translators append to
 `context`.
@@ -100,7 +100,7 @@ command below.
 ## 4. Live updates
 
 A running app watches its translation folder. When a file changes, the new text applies without a
-relaunch. How much of the screen updates in place depends on the runtime; with LimbaKit, SwiftUI
+relaunch. How much of the screen updates in place depends on the runtime. With LimbaKit, SwiftUI
 text updates under any view that carries the `.limba()` modifier, and the runtime updates AppKit
 windows and menus.
 
@@ -174,7 +174,7 @@ the Mac such as `ro-RO`, which the translator reduces to the language it writes.
 registers the `limba` URL scheme selects the app and opens that language, or starts it when it has no
 translation yet. When no translator is installed, the app opens https://lowtechguys.com/limba instead.
 
-`LimbaTranslateButton` in LimbaKit does all of this, and sends the language the app shows, or the first
+`LimbaTranslateButton` in LimbaKit does all of this. It sends the language the app shows, or the first
 preferred language of the Mac that the app is not written in.
 
 ## Versioning

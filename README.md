@@ -1,10 +1,15 @@
 # LimbaKit
 
-LimbaKit is a Swift package that lets people translate your Mac app themselves. They do it in the
-[Limba app](https://lowtechguys.com/limba) with an AI model of their choice, and the app updates while
-they edit. Any other tool that writes the files described in [PROTOCOL.md](PROTOCOL.md) works too.
+LimbaKit is a Swift package that allows you to give your users the ability to translate your Mac
+app on their own Mac. You won't have to include localizations in your app anymore.
 
-It needs macOS 13 or later.
+Your users will be able to use the free [Limba app](https://lowtechguys.com/limba) with an AI model
+of their choice to translate every text. The app updates in real time while they edit translations.
+
+> *Other tools can be created to translate apps in the same way through LimbaKit, based on the
+> protocol described in [PROTOCOL.md](PROTOCOL.md).*
+
+LimbaKit needs macOS 13 or later.
 
 ```swift
 .package(url: "https://github.com/FuzzyIdeas/LimbaKit", from: "0.1.0")
@@ -39,12 +44,12 @@ Strings must go through a String Catalog. SwiftUI literals already do: `Text("Br
 
 Then:
 
-1. Add `Localizable.xcstrings` to the target, if there is none. Xcode fills it at every build;
+1. Add `Localizable.xcstrings` to the target, if there is none. Xcode fills it at every build.
    `xcodebuild -exportLocalizations -project App.xcodeproj -localizationPath /tmp/x -exportLanguage en`
    does the same from the command line.
 2. In the catalog editor, untick *Translate* for names that stay as they are.
 3. Add a *Copy Files* build phase: Destination *Resources*, Subpath `Limba`, with the catalog in it.
-   Xcode compiles catalogs listed under *Copy Bundle Resources*; this phase ships the file as it is.
+   Xcode compiles catalogs listed under *Copy Bundle Resources*. This phase ships the file as it is.
 
 ### 2. Load translations
 
@@ -85,7 +90,7 @@ Settings { SettingsView().limba() }
 ```
 
 SwiftUI text under it updates in place when the language or a translation changes, and views keep
-their state. AppKit windows, toolbars and menus are updated by the runtime. Text that the app builds
+their state. The runtime updates AppKit windows, toolbars and menus. Text that the app builds
 once and keeps, such as a string stored in a model, updates when its view renders again. To rebuild
 it sooner, listen for the `.limbaDidChange` notification.
 
@@ -122,9 +127,9 @@ Limba.registerScreen("settings.general", title: "Settings > General") {
 
 `Limba.start()` subclasses the class of the app's main bundle at runtime and overrides the
 methods that Foundation, SwiftUI and AppKit use to look up localized strings. A lookup checks the
-translation first and falls back to the text built into the app. The translation folder is watched;
-on a change, the files are loaded again and the runtime sets a new `Locale` in the SwiftUI
-environment, which differs only by a private keyword, so every `Text` resolves again while views
+translation first and falls back to the text built into the app. The translation folder is watched.
+On a change, the files are loaded again and the runtime sets a new `Locale` in the SwiftUI
+environment. It differs only by a private keyword, so every `Text` resolves again while views
 keep their state.
 
 The private methods are only overridden when their type signature matches what the code expects. On
@@ -132,10 +137,10 @@ a system where one of them changed, that path falls back to the built-in text in
 
 ## Limits
 
-- Checked on macOS 27. The public lookup paths work on older systems; some private ones may not.
+- Checked on macOS 27. The public lookup paths work on older systems, but some private ones may not.
 - Text that macOS provides stays in the system language: the items that every app menu has (About,
   Hide, Quit), system alerts, open and save panels.
 - `String(localized:)` with a count uses the plural rules of the app's built-in language. SwiftUI
   `Text` under `.limba()` and `String(limba:)` use those of the translation.
-- A sandboxed app keeps its translations inside its container. macOS asks the person once before a
+- A sandboxed app keeps its translations inside its container. macOS asks the user once before a
   translator may write there.
