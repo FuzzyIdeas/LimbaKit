@@ -63,6 +63,10 @@ meaning. The person translating can add their own notes on top. Those notes stay
 A longer text can go in `Contents/Resources/Limba/context.md`, which translators append to
 `context`.
 
+Limba can share the translations that people make with its community server, and download a
+translation that other people agreed on. To keep an app off that server, add `"community": false`
+to the manifest. Limba then doesn't offer, share or show community translations for that app.
+
 ## 2. Translation files, outside the app bundle
 
 Translations live in the app's Application Support folder, as the app itself resolves it:
