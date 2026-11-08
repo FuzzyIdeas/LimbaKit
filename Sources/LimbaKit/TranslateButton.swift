@@ -5,21 +5,50 @@ import LimbaCore
 /// The button that sits next to the language menu in an app's settings. It opens Limba on this app,
 /// or Limba's web page when Limba is not installed.
 ///
-/// The title is the app's own string, so it is extracted into the app's String Catalog and gets
-/// translated with the rest of the app:
+/// LimbaKit has the title "Translate with Limba" in many languages. By default the button shows it
+/// in the first language of the Mac, so that a person who can't read the app's language can still
+/// find the button:
+///
+///     LimbaTranslateButton()                       // the Mac's language
+///     LimbaTranslateButton(titleLanguage: .app)    // the language the app shows
+///     LimbaTranslateButton(titleLanguage: .english)
+///
+/// An app that wants its own wording passes a title, which goes into the app's String Catalog:
 ///
 ///     LimbaTranslateButton("Translate with Limba")
 public struct LimbaTranslateButton: View {
-    private let title: LocalizedStringKey
+    /// The language of the button's title.
+    public enum TitleLanguage: Sendable {
+        /// The first language of the Mac that LimbaKit has a title for.
+        case system
+        /// The language the app shows: its Limba translation, or the language it is written in.
+        case app
+        /// Always English.
+        case english
+    }
+
+    private let title: LocalizedStringKey?
+    private let titleLanguage: TitleLanguage
+    @ObservedObject private var runtime = LimbaRuntime.shared
+
+    public init(titleLanguage: TitleLanguage = .system) {
+        title = nil
+        self.titleLanguage = titleLanguage
+    }
 
     public init(_ title: LocalizedStringKey) {
         self.title = title
+        titleLanguage = .app
     }
 
     public var body: some View {
         Button(action: Limba.openTranslator) {
             Label {
-                Text(title)
+                if let title {
+                    Text(title)
+                } else {
+                    Text(verbatim: TranslateButtonTitles.title(for: languages))
+                }
             } icon: {
                 Image(nsImage: Limba.translatorIcon)
                     .resizable()
@@ -27,6 +56,18 @@ public struct LimbaTranslateButton: View {
                     .frame(width: 16, height: 16)
             }
             .labelStyle(.titleAndIcon)
+        }
+    }
+
+    /// The languages to try, best first.
+    private var languages: [String] {
+        switch titleLanguage {
+        case .system:
+            return Locale.preferredLanguages
+        case .app:
+            return [runtime.language ?? runtime.bundle.developmentLocalization ?? "en"]
+        case .english:
+            return ["en"]
         }
     }
 }

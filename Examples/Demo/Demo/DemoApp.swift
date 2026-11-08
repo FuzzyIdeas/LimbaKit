@@ -117,7 +117,7 @@ struct SettingsView: View {
                 // Step 3: the language picker, in a group of its own at the bottom of Settings > General.
                 Section {
                     LabeledContent("Language") {
-                        LimbaTranslateButton("Translate with Limba")
+                        LimbaTranslateButton()
                         LimbaLanguagePicker("Language").labelsHidden()
                     }
                 }

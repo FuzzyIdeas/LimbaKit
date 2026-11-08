@@ -93,11 +93,17 @@ The button opens Limba on this app, or Limba's web page when Limba is not instal
 ```swift
 Section {
     LabeledContent("Language") {
-        LimbaTranslateButton("Translate with Limba")
+        LimbaTranslateButton()
         LimbaLanguagePicker("Language").labelsHidden()
     }
 }
 ```
+
+LimbaKit has the button's title, "Translate with Limba", in more than 60 languages. The button shows
+it in the first language of the Mac, so that your users can find it even when they can't read the
+language your app is written in. Pass `titleLanguage: .app` to show it in the language that the app
+shows, or `titleLanguage: .english`. If you want your own wording, pass it as the title:
+the title from `LimbaTranslateButton("Translate with Limba")` is extracted into your String Catalog.
 
 At this point a translation applies when the app opens.
 
