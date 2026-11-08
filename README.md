@@ -1,24 +1,22 @@
 # LimbaKit
 
-Your Mac app ships in one language. The people using it translate it into theirs, with the AI model
-they prefer, and tune the wording until it reads right to them. Changes show up in the running app
-while they edit.
+LimbaKit is a Swift package that lets people translate your Mac app themselves. They do it in the
+[Limba app](https://lowtechguys.com/limba) with an AI model of their choice, and the app updates while
+they edit. Any other tool that writes the files described in [PROTOCOL.md](PROTOCOL.md) works too.
 
-LimbaKit is the Swift package an app adds for that, on macOS 13 and later. Translations come from the
-[Limba app](https://lowtechguys.com/limba), or from any tool that writes the files described in
-[PROTOCOL.md](PROTOCOL.md).
+It needs macOS 13 or later.
 
 ```swift
 .package(url: "https://github.com/FuzzyIdeas/LimbaKit", from: "0.1.0")
 ```
 
-This repository holds:
+In this repository:
 
 - **LimbaKit**: the package an app adds.
-- **LimbaCore**: the protocol's file formats and types, for tools that read or write translations.
-- [PROTOCOL.md](PROTOCOL.md): how an app and a translator find each other's files and talk.
-- [Skills/limba-adopt](Skills/limba-adopt/SKILL.md): the whole adoption as steps that a coding agent
-  can follow, with `Scripts/limba-adopt.py` for the Xcode project.
+- **LimbaCore**: the file formats and types of the protocol, for tools that read or write translations.
+- [PROTOCOL.md](PROTOCOL.md): how an app and a translator find each other's files.
+- [Skills/limba-adopt](Skills/limba-adopt/SKILL.md): the steps below, written for a coding agent to
+  follow, with `Scripts/limba-adopt.py` for the Xcode project.
 - **Examples/Demo**: a small SwiftUI app that adopts every step below.
 
 ## Making an app translatable
@@ -88,13 +86,13 @@ Settings { SettingsView().limba() }
 
 SwiftUI text under it updates in place when the language or a translation changes, and views keep
 their state. AppKit windows, toolbars and menus are updated by the runtime. Text that the app builds
-once and keeps, such as a string stored in a model, updates when its view renders again; the
-`.limbaDidChange` notification is the moment to rebuild it.
+once and keeps, such as a string stored in a model, updates when its view renders again. To rebuild
+it sooner, listen for the `.limbaDidChange` notification.
 
 ### 4. Context for the model
 
-A translation is only as good as what the model knows about the app. Add
-`Limba/app.json` to the same *Copy Files* phase:
+The model translates better when it knows what the app does. Add `Limba/app.json` to the same
+*Copy Files* phase:
 
 ```json
 {
@@ -111,8 +109,8 @@ Comments on catalog entries reach the model too.
 
 ### 5. Screens
 
-Let a translator open each screen of the app, so it can learn where every string appears and the
-person can see the translation in place:
+Register each screen of the app, so a translator can open it, find where every string appears and
+see the translation in place:
 
 ```swift
 Limba.registerScreen("settings.general", title: "Settings > General") {
