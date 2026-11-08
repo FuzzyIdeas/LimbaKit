@@ -66,8 +66,9 @@ var errorDescription: String?         error messages shown to people
 ```
 
 The last pattern matters most. Code that compares a window's title with a literal breaks as soon
-as the title is translated. Match the window by its `identifier` instead, before changing anything
-else.
+as the title is translated. Note each one here, and in section 3 match the window by its
+`identifier` instead. SwiftUI gives a `Window(id: "settings")` window an identifier that starts with
+`settings`, so compare with `hasPrefix`.
 
 ## 2. Add Limba
 
@@ -111,7 +112,7 @@ else.
    meaning. Invented feature names are names: give them `"translate": false` and a note, or a small
    model turns a name like "Sub-zero" into a plain word for darkness:
    `{"term": "Sub-zero", "translate": false, "note": "dimming below 0% brightness"}`.
-   Add `{"term": "Limba", "translate": false, "note": "the translator app; Translate with Limba is a command"}`,
+   Add `{"term": "Limba", "translate": false, "note": "name of a translator app; translate the words around it, as in Translate with Limba"}`,
    since the app now shows "Translate with Limba". Abbreviations in capitals (OSD, DDC) stay as
    written without an entry. Write one entry per term:
    an entry for "Spaces, Mission Control" matches no string.
@@ -138,6 +139,8 @@ else.
    in one row labelled Language, built the way the app builds the rows around it. The row goes at the
    bottom of the General pane of Settings, in a group of its own after the General settings. When the
    settings window has no panes, it goes at the bottom of that window, in a group of its own. If the
+   form has no groups yet, wrap the existing rows in one `Section` and put the Language row in a
+   second one. If the
    window has a fixed or minimum size, make it taller so that the new row is not cut off.
 
 7. Register a screen for each Settings pane and main window:
@@ -154,7 +157,9 @@ else.
 
    Since macOS 14, SwiftUI ignores `showSettingsWindow:`; keep the `openSettings` environment action
    somewhere the closure can call it. When the settings are a `Window(id:)` scene instead of a
-   `Settings` scene, use the `openWindow` action with that id.
+   `Settings` scene, use the `openWindow` action with that id. Register the screens once at launch,
+   in `App.init()` or the app delegate. If the closure can't reach `openWindow` from there, open the
+   window the way the app already does it elsewhere.
 
 ## 3. Route every string through the catalog
 
