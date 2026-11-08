@@ -1,8 +1,8 @@
 # Limba protocol, version 1
 
-Limba lets the users of a Mac app translate it into their own language with the AI model
-or service they choose. They can edit the result. The developer ships the app in one language. A separate
-translator tool writes the translations, and the app picks them up while it runs.
+Limba lets the users of a Mac app translate it into their own language with the AI model or service
+they choose. You as the developer keep the app in a single language and the users can run the Limba app
+to translate it into their own language.
 
 The protocol has three parts, and each uses formats that Xcode already produces:
 

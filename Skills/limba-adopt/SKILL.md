@@ -5,9 +5,9 @@ description: Make a macOS app translatable by the people who use it, with Limba.
 
 # Make a Mac app translatable with Limba
 
-Limba lets the users of an app translate it into their own language with any AI model, while the app runs.
-The developer's part is small but has to be complete: every string a person reads must come from the
-app's String Catalog, or no translator can reach it.
+Limba lets the users of a Mac app translate it into their own language with the AI model they choose.
+The developer's part is to make sure that every string a person reads comes from the app's String
+Catalog, because a translator can't reach any other text.
 
 **Done means all four:**
 
