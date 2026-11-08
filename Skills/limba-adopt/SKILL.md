@@ -59,11 +59,12 @@ var errorDescription: String?         error messages shown to people
 
 ## 2. Add Limba
 
-1. Run the adoption script from the folder of the `.xcodeproj`:
+1. Clone https://github.com/FuzzyIdeas/LimbaKit somewhere outside the app's repository, such as
+   `/tmp/LimbaKit`. Run its adoption script from the folder of the `.xcodeproj`:
 
    ```sh
-   python3 <Limba>/Scripts/limba-adopt.py App.xcodeproj --target App \
-     --package https://github.com/<org>/Limba \
+   python3 /tmp/LimbaKit/Scripts/limba-adopt.py App.xcodeproj --target App \
+     --package https://github.com/FuzzyIdeas/LimbaKit \
      --catalog App/Localizable.xcstrings --manifest Limba/app.json
    ```
 
