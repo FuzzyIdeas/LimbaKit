@@ -54,7 +54,7 @@ enum TranslateButtonTitles {
         "nn": "Omset med Limba",
         "pl": "Przetłumacz za pomocą Limba",
         "pt": "Traduzir com o Limba",
-        "ro": "Tradu cu Limba",
+        "ro": "Tradu prin Limba",
         "ru": "Перевести с помощью Limba",
         "sk": "Preložiť pomocou Limba",
         "sl": "Prevedi z aplikacijo Limba",

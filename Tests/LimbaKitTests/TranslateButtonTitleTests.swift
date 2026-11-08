@@ -3,7 +3,7 @@ import XCTest
 
 final class TranslateButtonTitleTests: XCTestCase {
     func testRegionFallsBackToLanguage() {
-        XCTAssertEqual(TranslateButtonTitles.title(forLanguage: "ro-RO"), "Tradu cu Limba")
+        XCTAssertEqual(TranslateButtonTitles.title(forLanguage: "ro-RO"), "Tradu prin Limba")
         XCTAssertEqual(TranslateButtonTitles.title(forLanguage: "pt-BR"), "Traduzir com o Limba")
     }
 
