@@ -17,6 +17,10 @@ static NSMutableDictionary<NSNumber *, NSString *> *gMarkerTable;
 static NSMutableDictionary<NSString *, NSString *> *gValueToKey;
 static NSMutableSet<NSString *> *gSeen;
 static NSMutableArray<NSString *> *gLog;
+// Overlay results by lookup, for the current overlay only. Every lookup that names a language makes
+// CFBundle read and parse the whole strings file again (its table cache only serves lookups without
+// one), so SwiftUI redrawing a few hundred Text views could hold the main thread for seconds.
+static NSMutableDictionary<NSString *, NSArray *> *gResults;
 
 // Lookups nest: the public method calls private ones on the same bundle. Only the outermost call
 // serves the overlay and adds a marker, the inner ones pass straight through.
@@ -36,6 +40,34 @@ static void LBSnapshot(NSBundle **bundle, NSString **language, NSArray **languag
     if (languages) *languages = gLanguages;
     os_unfair_lock_unlock(&gLock);
 }
+
+// The results dictionary belongs to one overlay. A lookup keeps the one it started with, so a result
+// read from an old overlay never lands in the dictionary of the new one.
+static NSMutableDictionary *LBResults(void) {
+    os_unfair_lock_lock(&gLock);
+    NSMutableDictionary *d = gResults;
+    os_unfair_lock_unlock(&gLock);
+    return d;
+}
+
+// An entry is @[ result or NSNull, localization or NSNull, configuration or NSNull ].
+static NSArray *LBCached(NSMutableDictionary *results, NSString *cacheKey) {
+    if (!results) return nil;
+    os_unfair_lock_lock(&gLock);
+    NSArray *e = results[cacheKey];
+    os_unfair_lock_unlock(&gLock);
+    return e;
+}
+
+static void LBStore(NSMutableDictionary *results, NSString *cacheKey, id r, NSString *loc, id config) {
+    if (!results) return;
+    os_unfair_lock_lock(&gLock);
+    if (results.count >= kMaxRemembered) [results removeAllObjects];
+    results[cacheKey] = @[ r ?: NSNull.null, loc ?: NSNull.null, config ?: NSNull.null ];
+    os_unfair_lock_unlock(&gLock);
+}
+
+static id LBUnwrap(id v) { return v == NSNull.null ? nil : v; }
 
 static NSString *LBMarkerFor(NSString *tableKey) {
     os_unfair_lock_lock(&gLock);
@@ -105,6 +137,10 @@ static NSString *LBOverlayString(NSString *key, NSString *table) {
     NSBundle *ov; NSString *lang; NSArray *langs;
     LBSnapshot(&ov, &lang, &langs);
     if (!ov || !key) return nil;
+    NSMutableDictionary *results = LBResults();
+    NSString *ck = [@"s" stringByAppendingString:LBTableKey(table, key)];
+    NSArray *hit = LBCached(results, ck);
+    if (hit) return LBUnwrap(hit[0]);
     NSString *r;
     SEL single = NSSelectorFromString(@"localizedStringForKey:value:table:localization:");
     if (@available(macOS 15.4, *)) {
@@ -114,7 +150,8 @@ static NSString *LBOverlayString(NSString *key, NSString *table) {
     } else {
         r = [ov localizedStringForKey:key value:kMissing table:table];
     }
-    if (!r || [r isEqualToString:kMissing]) return nil;
+    if (!r || [r isEqualToString:kMissing]) r = nil;
+    LBStore(results, ck, r, nil, nil);
     return r;
 }
 
@@ -122,6 +159,10 @@ static NSAttributedString *LBOverlayAttributed(NSString *key, NSString *table) {
     NSBundle *ov; NSString *lang;
     LBSnapshot(&ov, &lang, NULL);
     if (!ov || !key) return nil;
+    NSMutableDictionary *results = LBResults();
+    NSString *ck = [@"a" stringByAppendingString:LBTableKey(table, key)];
+    NSArray *hit = LBCached(results, ck);
+    if (hit) return LBUnwrap(hit[0]);
     SEL single = NSSelectorFromString(@"localizedAttributedStringForKey:value:table:localization:");
     NSAttributedString *r;
     if (lang && [ov respondsToSelector:single]) {
@@ -129,7 +170,8 @@ static NSAttributedString *LBOverlayAttributed(NSString *key, NSString *table) {
     } else {
         r = [ov localizedAttributedStringForKey:key value:kMissing table:table];
     }
-    if (!r || [r.string isEqualToString:kMissing]) return nil;
+    if (!r || [r.string isEqualToString:kMissing]) r = nil;
+    LBStore(results, ck, r, nil, nil);
     return r;
 }
 
@@ -137,10 +179,22 @@ static id LBOverlayNoCache(SEL sel, NSString *key, NSString *table, NSArray *bun
     NSBundle *ov; NSArray *langs;
     LBSnapshot(&ov, NULL, &langs);
     if (!ov || !key || ![ov respondsToSelector:sel]) return nil;
+    // Without an overlay language the result depends on the caller's localizations, so skip the cache.
+    NSMutableDictionary *results = langs ? LBResults() : nil;
+    NSString *ck = [@"n" stringByAppendingString:LBTableKey(table, key)];
+    NSArray *hit = LBCached(results, ck);
+    if (hit) {
+        if (!LBUnwrap(hit[0])) return nil;
+        if (locOut) *locOut = LBUnwrap(hit[1]);
+        if (configOut) *configOut = LBUnwrap(hit[2]);
+        return hit[0];
+    }
     NSString *loc = nil;
     id config = nil;
     id r = ((LBNoCache)objc_msgSend)(ov, sel, key, kMissing, table, langs ?: bundleLocalizations, &loc, &config);
-    if (!r || [r isEqual:kMissing]) return nil;
+    if (!r || [r isEqual:kMissing]) r = nil;
+    LBStore(results, ck, r, loc, config);
+    if (!r) return nil;
     if (locOut) *locOut = loc;
     if (configOut) *configOut = config;
     return r;
@@ -150,10 +204,20 @@ static id LBOverlayFlagged(SEL sel, NSString *key, NSString *table, NSArray *bun
     NSBundle *ov; NSArray *langs;
     LBSnapshot(&ov, NULL, &langs);
     if (!ov || !key || ![ov respondsToSelector:sel]) return nil;
+    NSMutableDictionary *results = langs ? LBResults() : nil;
+    NSString *ck = [(preventMarkdown ? @"p" : @"m") stringByAppendingString:LBTableKey(table, key)];
+    NSArray *hit = LBCached(results, ck);
+    if (hit) {
+        if (!LBUnwrap(hit[0])) return nil;
+        if (locOut) *locOut = LBUnwrap(hit[1]);
+        return hit[0];
+    }
     NSString *loc = nil;
     id r = ((LBFlagged)objc_msgSend)(ov, sel, key, kMissing, table, langs ?: bundleLocalizations, &loc, preventMarkdown);
     NSString *plain = [r isKindOfClass:NSAttributedString.class] ? [(NSAttributedString *)r string] : r;
-    if (!r || [plain isEqual:kMissing]) return nil;
+    if (!r || [plain isEqual:kMissing]) r = nil;
+    LBStore(results, ck, r, loc, nil);
+    if (!r) return nil;
     if (locOut) *locOut = loc;
     return r;
 }
@@ -318,6 +382,7 @@ static BOOL LBAdd(Class sub, Class sup, NSString *name, NSString *expectedTypes,
 + (void)setOverlayBundle:(NSBundle *)bundle language:(NSString *)language {
     os_unfair_lock_lock(&gLock);
     gOverlay = bundle;
+    gResults = bundle ? [NSMutableDictionary new] : nil;
     gLanguage = [language copy];
     gLanguages = language ? @[ language ] : nil;
     os_unfair_lock_unlock(&gLock);
