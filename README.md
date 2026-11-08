@@ -67,14 +67,16 @@ struct MyApp: App {
 
 In an AppKit app, call it in `applicationWillFinishLaunching(_:)`.
 
-Add the language menu and the Limba button to the General pane of Settings, in a row that looks
-like the rows around it. The button opens Limba on this app, or Limba's web page when Limba is not
-installed:
+Add the Limba button and the language menu to the General pane of Settings, in a row that looks
+like the rows around it. Put the row at the bottom of the General settings, in a group of its own.
+The button opens Limba on this app, or Limba's web page when Limba is not installed:
 
 ```swift
-LabeledContent("Language") {
-    LimbaLanguagePicker("Language").labelsHidden()
-    LimbaTranslateButton("Translate with Limba")
+Section {
+    LabeledContent("Language") {
+        LimbaTranslateButton("Translate with Limba")
+        LimbaLanguagePicker("Language").labelsHidden()
+    }
 }
 ```
 

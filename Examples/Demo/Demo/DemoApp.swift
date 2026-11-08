@@ -110,13 +110,17 @@ struct SettingsView: View {
     var body: some View {
         TabView(selection: $tab) {
             Form {
-                // Step 3: the language picker, in Settings > General.
-                LabeledContent("Language") {
-                    LimbaLanguagePicker("Language").labelsHidden()
-                    LimbaTranslateButton("Translate with Limba")
+                Section {
+                    Toggle("Launch at login", isOn: $launchAtLogin)
+                    Toggle("Show in menu bar", isOn: $showInMenuBar)
                 }
-                Toggle("Launch at login", isOn: $launchAtLogin)
-                Toggle("Show in menu bar", isOn: $showInMenuBar)
+                // Step 3: the language picker, in a group of its own at the bottom of Settings > General.
+                Section {
+                    LabeledContent("Language") {
+                        LimbaTranslateButton("Translate with Limba")
+                        LimbaLanguagePicker("Language").labelsHidden()
+                    }
+                }
             }
             .formStyle(.grouped)
             .tabItem { Label("General", systemImage: "gearshape") }

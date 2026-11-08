@@ -115,8 +115,9 @@ var errorDescription: String?         error messages shown to people
 5. Add `.limba()` to every SwiftUI root, and to the root view of every hosting view that stays on
    screen. Views that are rebuilt each time they appear (a HUD, an overlay) do not need it.
 
-6. Put `LimbaLanguagePicker("Language").labelsHidden()` and `LimbaTranslateButton("Translate with Limba")`
-   in one row of the General pane of Settings, built the way the app builds the rows around it.
+6. Put `LimbaTranslateButton("Translate with Limba")` and then `LimbaLanguagePicker("Language").labelsHidden()`
+   in one row labelled Language, built the way the app builds the rows around it. The row goes at the
+   bottom of the General pane of Settings, in a group of its own after the General settings.
 
 7. Register a screen for each Settings pane and main window:
 
