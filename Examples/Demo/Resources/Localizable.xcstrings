@@ -1,0 +1,87 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "%lld displays" : {
+
+    },
+    "%lld lux" : {
+
+    },
+    "Adaptive mode" : {
+
+    },
+    "Ambient light threshold" : {
+
+    },
+    "Automatic updates" : {
+
+    },
+    "Brightness" : {
+
+    },
+    "Connected displays" : {
+
+    },
+    "Control" : {
+
+    },
+    "Dark mode" : {
+
+    },
+    "Decrease Brightness" : {
+
+    },
+    "Display" : {
+
+    },
+    "General" : {
+
+    },
+    "Increase Brightness" : {
+
+    },
+    "Launch at login" : {
+
+    },
+    "Location" : {
+
+    },
+    "Low light automation" : {
+
+    },
+    "Manual" : {
+
+    },
+    "Night Shift" : {
+
+    },
+    "Open Limba Demo" : {
+
+    },
+    "Quit" : {
+
+    },
+    "Reset Settings" : {
+
+    },
+    "Sensor" : {
+
+    },
+    "Show in menu bar" : {
+
+    },
+    "Sub-zero dimming" : {
+
+    },
+    "Sync" : {
+
+    },
+    "Sync Mode" : {
+
+    },
+    "Limba Demo" : {
+
+    }
+  },
+  "version" : "1.0"
+}

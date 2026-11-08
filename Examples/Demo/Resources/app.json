@@ -1,0 +1,10 @@
+{
+  "protocol": 1,
+  "description": "Limba Demo stands in for a monitor brightness app: it adjusts the brightness of external displays and can dim below 0%.",
+  "context": "People who use it have one or more external monitors. Brightness and thresholds are numbers with units that stay as written: % and lux.",
+  "glossary": [
+    { "term": "Sub-zero", "note": "Dimming below 0% brightness by darkening the picture in software. Zero means 0% brightness, not a temperature.", "translate": false },
+    { "term": "Sync", "note": "Copies the built-in display's brightness to external monitors" },
+    { "term": "Night Shift", "note": "The macOS feature that warms the screen colors at night; use the name macOS uses in the target language" }
+  ]
+}
