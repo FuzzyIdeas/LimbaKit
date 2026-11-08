@@ -1,11 +1,10 @@
 # Limba protocol, version 1
 
 Limba lets the people who use a Mac app translate it into their own language, with the AI model
-or service they choose, and tune the result until it reads the way they want. The developer ships the
-app in one language. A separate translator tool writes the translations, and the app picks them up
-while it runs.
+or service they choose, and edit the result. The developer ships the app in one language. A separate
+translator tool writes the translations, and the app picks them up while it runs.
 
-The protocol is three agreements, each one built on formats that Xcode already produces:
+The protocol has three parts, and each uses formats that Xcode already produces:
 
 1. The app ships its **source strings**: the String Catalogs, copied into the bundle unprocessed.
 2. Translators write **translation files** to a known folder outside the app bundle, in the standard
@@ -23,8 +22,8 @@ follows this document works with both.
 ## 1. Source strings, inside the app bundle
 
 The app copies its String Catalogs (`.xcstrings`) into `Contents/Resources/Limba/`, byte for byte.
-Xcode compiles catalogs listed under *Copy Bundle Resources*, so the copy is done by a separate *Copy
-Files* build phase with destination *Resources* and subpath `Limba`. One catalog per table:
+The copy is a separate *Copy Files* build phase with destination *Resources* and subpath `Limba`,
+because Xcode compiles catalogs listed under *Copy Bundle Resources*. One catalog per table:
 `Localizable.xcstrings` is the table named `Localizable`, `InfoPlist.xcstrings` is `InfoPlist`, and so on.
 
 The catalog format is Xcode's String Catalog JSON. Translators read these fields:
@@ -43,7 +42,7 @@ When a key has no source value, the key itself is the source text, which is how 
 
 ### The manifest, optional
 
-`Contents/Resources/Limba/app.json` tells translators what the app is about:
+`Contents/Resources/Limba/app.json` describes the app for translators:
 
 ```json
 {
@@ -78,9 +77,9 @@ Translations live in the app's Application Support folder, as the app itself res
 - `<Table>` matches the name of a source catalog.
 - `.strings` holds `"key" = "translation";` pairs, UTF-8 or UTF-16. `.stringsdict` holds plural
   variations in Apple's property list format, keyed by the same key.
-- Keys that are missing fall back to the app's built-in text, so a partial translation works.
-- Writers replace a file in one step (write a temporary file next to it, then rename it), so the app
-  never reads half a file.
+- Keys that are missing fall back to the app's built-in text.
+- Writers replace a file in one step, by writing a temporary file next to it and renaming it, to keep
+  the app from reading half a file.
 
 A translator may also write `language.json` next to the tables:
 
@@ -156,7 +155,7 @@ may carry no marker, and translators match those by their text.
 
 ## 6. Context for the translation model
 
-A good translation depends on knowing where a string appears. Translators combine:
+Translators combine these to know where a string appears:
 
 - the catalog `comment` of each key,
 - the manifest's description, context and glossary,
@@ -166,7 +165,7 @@ A good translation depends on knowing where a string appears. Translators combin
 
 ## 7. Opening the translator from the app, optional
 
-An app can link to its own translation, usually from a button next to the language menu. The link is
+An app can open the translator on itself, usually from a button next to the language menu, with the link
 
     limba://translate?app=<bundle identifier>&language=<code>
 

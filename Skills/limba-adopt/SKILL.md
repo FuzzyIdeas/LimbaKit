@@ -23,8 +23,8 @@ Read `PROTOCOL.md` in the Limba repository once before starting. It is short.
 - Xcode 16 or later, and `python3` for `Scripts/limba-adopt.py`.
 - The `limba` command line tool: in the Limba app, choose Limba > Install Command Line Tool…, which links it
   into `~/.local/bin`.
-- An OpenAI-compatible endpoint for the smoke test. A small cheap model is the right test: if the
-  translation reads well with it, it reads well with anything.
+- An OpenAI-compatible endpoint for the smoke test. Use a small cheap model: a translation that
+  reads well from it will read well from a larger one.
 - A Mac to run the app on, where the shell that runs `limba audit` has Accessibility access.
 
 Work on a branch. When you use a git worktree, copy the generated, git-ignored source files from the
@@ -91,7 +91,7 @@ var errorDescription: String?         error messages shown to people
    }
    ```
 
-   The glossary is where translation quality is won. List product and feature names that stay as
+   The glossary matters most for translation quality. List product and feature names that stay as
    they are (`"translate": false`), and every term whose plain-English meaning is not the app's
    meaning. Invented feature names are names: give them `"translate": false` and a note, or a small
    model turns a name like "Sub-zero" into a plain word for darkness:
@@ -140,7 +140,7 @@ Change types and call sites. **Never change the wording**: the developer's words
 | Found | Change it to |
 |---|---|
 | `Text(title)` where `title: String` holds copy | make the property `LocalizedStringKey` or `LocalizedStringResource` |
-| `Text("License: \(on ? "Active" : "Off")")` | `on ? Text("License: Active") : Text("License: Off")`. Literals inside an interpolation are plain `String`s, so they are never extracted. `Text(on ? "On" : "Off")` is fine as it is: both literals become keys |
+| `Text("License: \(on ? "Active" : "Off")")` | `on ? Text("License: Active") : Text("License: Off")`. Literals inside an interpolation are plain `String`s and are never extracted. `Text(on ? "On" : "Off")` is fine as it is: both literals become keys |
 | a ternary that mixes a literal with a `String`, or a ternary inside `String(localized:)` | one `Text` or `String(localized:)` per branch. Neither form is extracted |
 | a custom view with `init(_ text: String)` used for copy | take `LocalizedStringKey`. If the view needs a `String` too (an id, a seed), take `LocalizedStringResource` and use `.key` |
 | an enum's `var displayName: String { switch … "Top Left" }` | return `LocalizedStringResource`. `Text(x.displayName)` works as is; where a `String` is needed, write `String(localized: x.displayName)` |
@@ -234,7 +234,7 @@ check below quietly passes or fails for the wrong reason.
   localizations that ship inside the app.
 - `String(localized:)` with a count uses the plural rules of the user's region; SwiftUI `Text` uses
   those of the translation. Prefer SwiftUI for counted strings.
-- Text that the app computes once and keeps updates when its view renders again. Post-change code can
+- Text that the app computes once and keeps updates when its view renders again. Code that needs the new text sooner can
   listen for `.limbaDidChange`.
 - Free model tiers limit requests per minute. The CLI waits as long as the server asks and saves each
   batch, so a rerun only translates what is missing.
