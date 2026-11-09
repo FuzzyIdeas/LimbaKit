@@ -64,6 +64,25 @@ final class HookTests: XCTestCase {
         XCTAssertEqual(String(a.characters), "Text îngroșat")
     }
 
+    /// A lookup that names a language makes Foundation parse the whole strings file again on every call,
+    /// and SwiftUI does one for each Text it draws. The hook has to remember results for each overlay,
+    /// or a window full of text holds the main thread. Changing the file under the overlay shows whether
+    /// the second lookup read it again.
+    func testOverlayLookupsAreRememberedUntilTheOverlayChanges() throws {
+        let overlay = try makeOverlay(["Hello": "Salut", "**Bold** text": "Text **îngroșat**"])
+        LBHook.setOverlayBundle(overlay, language: "ro")
+        XCTAssertEqual(appBundle.localizedString(forKey: "Hello", value: nil, table: nil), "Salut")
+        XCTAssertEqual(String(AttributedString(localized: "**Bold** text", bundle: appBundle).characters), "Text îngroșat")
+
+        let file = URL(fileURLWithPath: overlay.bundlePath).appendingPathComponent("ro.lproj/Localizable.strings")
+        try StringsFiles.writeStrings(["Hello": "Bună", "**Bold** text": "Altceva"], to: file)
+        XCTAssertEqual(appBundle.localizedString(forKey: "Hello", value: nil, table: nil), "Salut")
+        XCTAssertEqual(String(AttributedString(localized: "**Bold** text", bundle: appBundle).characters), "Text îngroșat")
+
+        LBHook.setOverlayBundle(try makeOverlay(["Hello": "Bună"]), language: "ro")
+        XCTAssertEqual(appBundle.localizedString(forKey: "Hello", value: nil, table: nil), "Bună")
+    }
+
     func testMarkersNameTheKey() throws {
         LBHook.setOverlayBundle(try makeOverlay(["Hello": "Salut"]), language: "ro")
         LBHook.markersEnabled = true

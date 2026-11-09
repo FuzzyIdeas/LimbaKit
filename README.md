@@ -31,7 +31,7 @@ The agent needs the free [Limba app](https://lowtechguys.com/limba) on the Mac f
 the `limba` command line tool installed from the Limba menu.
 
 ```swift
-.package(url: "https://github.com/FuzzyIdeas/LimbaKit", from: "0.1.0")
+.package(url: "https://github.com/FuzzyIdeas/LimbaKit", from: "0.2.2")
 ```
 
 In this repository:
