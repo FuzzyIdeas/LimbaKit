@@ -145,20 +145,31 @@ Limba.addDeepLink("settings.general", title: "Settings > General") {
 ## How it works
 
 ```
- Limba app                        Translation folder                        Your app with LimbaKit
-                                  Application Support/Limba/<bundle id>/
-
- reads the String Catalogs  ◀─────────────────────────────────────────────  Contents/Resources/Limba/
- translates them with AI
-
- writes the translations    ───▶  ro.lproj/Localizable.strings    ───▶     Limba.start() looks up every
-                                  ro.lproj/Localizable.stringsdict          string here first, then in
-                                                                            the text built into the app
-
- sends commands             ───────── distributed notification  ───▶     switches language, shows
- (select, probe, show)                                                      markers, opens a deep link
-
- reads the app's state      ◀───  state.json                      ◀───    writes it after every change
+┌──────────────────────────────────────────────┐
+│ Your app                                     │
+│ ships its String Catalog unprocessed         │
+│ Contents/Resources/Limba/*.xcstrings         │
+└──────────────────────┬───────────────────────┘
+                       │ read by
+                       ▼
+┌──────────────────────────────────────────────┐
+│ Limba app                                    │
+│ translates every string with an AI model     │
+└──────────────────────┬───────────────────────┘
+                       │ writes
+                       ▼
+┌──────────────────────────────────────────────┐
+│ Translation folder                           │
+│ Application Support/Limba/<bundle id>/       │
+│   ro.lproj/Localizable.strings               │
+└──────────────────────┬───────────────────────┘
+                       │ watched by
+                       ▼
+┌──────────────────────────────────────────────┐
+│ LimbaKit, inside your app                    │
+│ shows the translation, or the English text   │
+│ when a string has no translation             │
+└──────────────────────────────────────────────┘
 ```
 
 1. **Lookups.** `Limba.start()` subclasses the class of the app's main bundle at runtime.
