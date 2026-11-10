@@ -154,10 +154,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item.menu = menu
         statusItem = item
 
-        // Step 4, optional: screens a translator can open to read their strings in place.
-        Limba.registerScreen("main", title: "Main window") { [weak self] in self?.openMain() }
-        Limba.registerScreen("settings.general", title: "Settings > General") { Self.openSettings(.general) }
-        Limba.registerScreen("settings.display", title: "Settings > Display") { Self.openSettings(.display) }
+        // Step 5, optional: deep links a translator can open from Limba to review their strings in place.
+        Limba.addDeepLink("main", title: "Main window") { [weak self] in self?.openMain() }
+        Limba.addDeepLink("settings.general", title: "Settings > General") { Self.openSettings(.general) }
+        Limba.addDeepLink("settings.display", title: "Settings > Display") { Self.openSettings(.display) }
     }
 
     @objc func openMain() {

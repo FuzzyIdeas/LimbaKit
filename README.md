@@ -9,11 +9,11 @@ of their choice to translate every text. The app updates in real time while they
 > *Other tools can be created to translate apps in the same way through LimbaKit, based on the
 > protocol described in [PROTOCOL.md](PROTOCOL.md).*
 
-LimbaKit needs macOS 13 or later.
+*LimbaKit needs macOS 13 or later.*
 
 ## Adopt it with a coding agent
 
-Give your coding agent this prompt, in the folder of your app:
+Implement LimbaKit by giving your coding agent this prompt:
 
 ```text
 Make this Mac app translatable with Limba.
@@ -27,8 +27,11 @@ Make this Mac app translatable with Limba.
 5. End with the report from section 7.
 ```
 
-The agent needs the free [Limba app](https://lowtechguys.com/limba) on the Mac for its checks, with
-the `limba` command line tool installed from the Limba menu.
+The agent uses the free [Limba app](https://lowtechguys.com/limba) and its `limba` command line
+tool for its checks, and installs both when they are missing. The one thing it can't do for you is
+give your terminal app Accessibility access, which `limba audit` needs.
+
+## Implement it yourself
 
 ```swift
 .package(url: "https://github.com/FuzzyIdeas/LimbaKit", from: "0.2.3")
@@ -45,30 +48,31 @@ In this repository:
 
 ## Making an app translatable
 
-Each step works without the ones after it.
+### 1. Extract your strings into the standard *Xcode Strings Catalog*
 
-### 1. Ship the strings
+Strings must go through a String Catalog to become dynamic. SwiftUI literals already do: `Text("Brightness")`,
+`Button("Reset")`, `Toggle("Sub-zero dimming", isOn:)`.
 
-Strings must go through a String Catalog. SwiftUI literals already do: `Text("Brightness")`,
-`Button("Reset")`, `Toggle("Sub-zero dimming", isOn:)`. These do not, and need a change:
+The ones below though need manual extraction:
 
-| Instead of | Write |
+| Static | Dynamic |
 |---|---|
 | `Text(verbatim: "Ready")` for prose | `Text("Ready")` |
 | `Text(title)` where `title: String` | make `title` a `LocalizedStringKey` or `LocalizedStringResource` |
 | a custom row view with `init(_ label: String)` | `init(_ label: LocalizedStringKey)` |
 | `item.title = "Quit"` in AppKit | `item.title = String(localized: "Quit")` |
-| `String(localized: "\(n) windows")` for a count built in code | `String(limba: "\(n) windows")`, so the count gets the plural rules of the translation |
+| `String(localized: "\(n) windows")` for variable interpolation | `String(limba: "\(n) windows")`, so the variable gets the plural rules of the translation |
 | `enum Mode: String { case sync = "Sync" }` shown with `rawValue` | a `title: LocalizedStringResource` property |
 
 Then:
 
-1. Add `Localizable.xcstrings` to the target, if there is none. Xcode fills it at every build.
-   `xcodebuild -exportLocalizations -project App.xcodeproj -localizationPath /tmp/x -exportLanguage en`
-   does the same from the command line.
-2. In the catalog editor, untick *Translate* for names that stay as they are.
-3. Add a *Copy Files* build phase: Destination *Resources*, Subpath `Limba`, with the catalog in it.
-   Xcode compiles catalogs listed under *Copy Bundle Resources*. This phase ships the file as it is.
+1. Add `Localizable.xcstrings` to the target. Xcode fills it at every build
+   - you can also do it manually with `xcodebuild -exportLocalizations -project App.xcodeproj -localizationPath /tmp/x -exportLanguage en`
+2. In the catalog editor, untick *Translate* for strings that you want to keep static *(e.g. company names, app names, trademarked features)*
+3. Add a *Copy Files* build phase for the catalog
+   - Destination *Resources*
+   - Subpath `Limba`
+   - important because otherwise Xcode compiles catalogs listed under *Copy Bundle Resources*. A *Copy Files* phase ships the file uncompiled which we need
 
 ### 2. Load translations
 
@@ -86,9 +90,9 @@ struct MyApp: App {
 
 In an AppKit app, call it in `applicationWillFinishLaunching(_:)`.
 
-Add the Limba button and the language menu to the General pane of Settings, in a row that looks
-like the rows around it. Put the row at the bottom of the General settings, in a group of its own.
-The button opens Limba on this app, or Limba's web page when Limba is not installed:
+Add the Limba button and the language menu in your app Settings.
+
+The button opens Limba, focused on this app, or Limba's web page when it is not installed:
 
 ```swift
 Section {
@@ -99,15 +103,11 @@ Section {
 }
 ```
 
-LimbaKit has the button's title, "Translate with Limba", in more than 60 languages. The button shows
-it in the first language of the Mac, so that your users can find it even when they can't read the
-language your app is written in. Pass `titleLanguage: .app` to show it in the language that the app
-shows, or `titleLanguage: .english`. If you want your own wording, pass it as the title:
-the title from `LimbaTranslateButton("Translate with Limba")` is extracted into your String Catalog.
+*LimbaKit's button title "Translate with Limba" is already localized in more than 60 languages.*
 
-At this point a translation applies when the app opens.
+### 3. Live updates (optional)
 
-### 3. Live updates
+You can give the app the ability to hot reload translations on the fly as they are generated or edited.
 
 Put `.limba()` on the root view of every window, `Settings` scene, popover and `MenuBarExtra`:
 
@@ -116,58 +116,66 @@ WindowGroup { ContentView().limba() }
 Settings { SettingsView().limba() }
 ```
 
-SwiftUI text under it updates in place when the language or a translation changes, and views keep
-their state. The runtime updates AppKit windows, toolbars and menus. Text that the app builds
-once and keeps, such as a string stored in a model, updates when its view renders again. To rebuild
-it sooner, listen for the `.limbaDidChange` notification.
-
-### 4. Context for the model
+### 4. Context for the model (optional)
 
 The model translates better when it knows what the app does. Add `Limba/app.json` to the same
-*Copy Files* phase:
+*Copy Files* phase from above:
 
 ```json
 {
   "protocol": 1,
   "description": "Lunar controls the brightness, contrast and volume of external monitors.",
-  "context": "Users have one or more external monitors. Brightness is a percentage.",
+  "context": "Users have one or more external monitors. Brightness is a percentage. Lid refers to a laptop lid.",
   "glossary": [
     { "term": "Sub-zero", "note": "Dimming below 0% by darkening the picture in software", "translate": false }
   ]
 }
 ```
 
-Comments on catalog entries reach the model too.
+### 5. Deep links (optional)
 
-### 5. Screens
-
-Register each screen of the app, so a translator can open it, find where every string appears and
-see the translation in place:
+Add a deep link for specific views of the app, so a translator can open them from Limba and review how the translated strings appear in the app.
 
 ```swift
-Limba.registerScreen("settings.general", title: "Settings > General") {
+Limba.addDeepLink("settings.general", title: "Settings > General") {
     openSettings(tab: .general)
 }
 ```
 
 ## How it works
 
-`Limba.start()` subclasses the class of the app's main bundle at runtime and overrides the
-methods that Foundation, SwiftUI and AppKit use to look up localized strings. A lookup checks the
-translation first and falls back to the text built into the app. The translation folder is watched.
-On a change, the files are loaded again and the runtime sets a new `Locale` in the SwiftUI
-environment. It differs only by a private keyword, so every `Text` resolves again while views
-keep their state.
+```
+ Limba app                        Translation folder                        Your app with LimbaKit
+                                  Application Support/Limba/<bundle id>/
 
-The private methods are only overridden when their type signature matches what the code expects. On
-a system where one of them changed, that path falls back to the built-in text instead of crashing.
+ reads the String Catalogs  ◀─────────────────────────────────────────────  Contents/Resources/Limba/
+ translates them with AI
+
+ writes the translations    ───▶  ro.lproj/Localizable.strings    ───▶     Limba.start() looks up every
+                                  ro.lproj/Localizable.stringsdict          string here first, then in
+                                                                            the text built into the app
+
+ sends commands             ───────── distributed notification  ───▶     switches language, shows
+ (select, probe, show)                                                      markers, opens a deep link
+
+ reads the app's state      ◀───  state.json                      ◀───    writes it after every change
+```
+
+1. **Lookups.** `Limba.start()` subclasses the class of the app's main bundle at runtime. The
+   subclass overrides the methods that Foundation, SwiftUI and AppKit use to look up localized
+   strings. A lookup checks the translation first and falls back to the text built into the app.
+2. **Live updates.** LimbaKit watches the translation folder. When a file changes, LimbaKit loads
+   the files again and sets a new `Locale` in the SwiftUI environment. The new `Locale` differs only
+   by a private keyword, so every `Text` resolves again and views keep their state. AppKit windows
+   and menus get their text set again.
+3. **Commands.** Limba sends commands to the running app as distributed notifications, and the app
+   answers by writing `state.json`. [PROTOCOL.md](PROTOCOL.md) lists the commands and the files.
+
+*LimbaKit overrides a private method only when its type signature matches what LimbaKit expects. On
+a system where one of them changed, that path falls back to the built-in text instead of crashing.*
 
 ## Limits
 
-- Checked on macOS 27. The public lookup paths work on older systems, but some private ones may not.
 - Text that macOS provides stays in the system language: the items that every app menu has (About,
   Hide, Quit), system alerts, open and save panels.
-- `String(localized:)` with a count uses the plural rules of the app's built-in language. SwiftUI
-  `Text` under `.limba()` and `String(limba:)` use those of the translation.
-- A sandboxed app keeps its translations inside its container. macOS asks the user once before a
-  translator may write there.
+- A sandboxed app keeps its translations inside a restricted filesystem container. macOS may ask for permission when Limba tries to write the translation files there.

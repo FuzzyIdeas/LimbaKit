@@ -2,7 +2,7 @@ import Foundation
 
 /// Names and paths fixed by PROTOCOL.md. Both sides of the protocol read them from here.
 public enum LimbaProtocol {
-    public static let version = 1
+    public static let version = 2
 
     /// User defaults key, in the app's domain, that holds the chosen language identifier.
     public static let languageDefaultsKey = "LimbaLanguage"
@@ -31,14 +31,24 @@ public enum LimbaProtocol {
         case live
         /// Markers can be turned on.
         case probe
-        /// The app can open screens by identifier.
-        case screens
+        /// The app can open its deep links by identifier.
+        case deepLinks
+
+        public init(from decoder: Decoder) throws {
+            let raw = try decoder.singleValueContainer().decode(String.self)
+            // Protocol 1 called deep links "screens".
+            guard let value = Capability(rawValue: raw == "screens" ? "deepLinks" : raw) else {
+                throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Unknown capability \(raw)"))
+            }
+            self = value
+        }
     }
 }
 
 /// Contents of `state.json`, written by a running app.
 public struct AppState: Codable, Sendable, Equatable {
-    public struct Screen: Codable, Sendable, Equatable, Hashable {
+    /// A view of the app that a translator can open, such as a Settings pane.
+    public struct DeepLink: Codable, Sendable, Equatable, Hashable {
         public var id: String
         public var title: String
         public init(id: String, title: String) {
@@ -53,7 +63,7 @@ public struct AppState: Codable, Sendable, Equatable {
     public var revision: Int
     public var probe: Bool
     public var capabilities: [LimbaProtocol.Capability]
-    public var screens: [Screen]
+    public var deepLinks: [DeepLink]
     /// Marker number (as a string) to [table, key].
     public var markers: [String: [String]]
     /// [table, key] pairs looked up at runtime that no shipped catalog contains.
@@ -62,7 +72,7 @@ public struct AppState: Codable, Sendable, Equatable {
 
     public init(
         pid: Int32, language: String?, revision: Int, probe: Bool,
-        capabilities: [LimbaProtocol.Capability], screens: [Screen],
+        capabilities: [LimbaProtocol.Capability], deepLinks: [DeepLink],
         markers: [String: [String]], seen: [[String]], updated: Date = Date()
     ) {
         self.protocol = LimbaProtocol.version
@@ -71,10 +81,45 @@ public struct AppState: Codable, Sendable, Equatable {
         self.revision = revision
         self.probe = probe
         self.capabilities = capabilities
-        self.screens = screens
+        self.deepLinks = deepLinks
         self.markers = markers
         self.seen = seen
         self.updated = updated
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case `protocol`, pid, language, revision, probe, capabilities, deepLinks, markers, seen, updated
+        /// Protocol 1 wrote deep links under this key.
+        case screens
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.protocol = try c.decode(Int.self, forKey: .protocol)
+        pid = try c.decode(Int32.self, forKey: .pid)
+        language = try c.decodeIfPresent(String.self, forKey: .language)
+        revision = try c.decode(Int.self, forKey: .revision)
+        probe = try c.decode(Bool.self, forKey: .probe)
+        capabilities = try c.decode([LimbaProtocol.Capability].self, forKey: .capabilities)
+        deepLinks = try c.decodeIfPresent([DeepLink].self, forKey: .deepLinks)
+            ?? c.decodeIfPresent([DeepLink].self, forKey: .screens) ?? []
+        markers = try c.decode([String: [String]].self, forKey: .markers)
+        seen = try c.decode([[String]].self, forKey: .seen)
+        updated = try c.decode(Date.self, forKey: .updated)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(self.protocol, forKey: .protocol)
+        try c.encode(pid, forKey: .pid)
+        try c.encodeIfPresent(language, forKey: .language)
+        try c.encode(revision, forKey: .revision)
+        try c.encode(probe, forKey: .probe)
+        try c.encode(capabilities, forKey: .capabilities)
+        try c.encode(deepLinks, forKey: .deepLinks)
+        try c.encode(markers, forKey: .markers)
+        try c.encode(seen, forKey: .seen)
+        try c.encode(updated, forKey: .updated)
     }
 }
 

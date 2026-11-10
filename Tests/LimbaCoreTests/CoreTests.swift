@@ -140,3 +140,29 @@ final class PluralRuleTests: XCTestCase {
         XCTAssertEqual(PluralRules.categories(for: "de"), ["one", "other"])
     }
 }
+
+final class AppStateTests: XCTestCase {
+    func testDecodesProtocolOneScreens() throws {
+        let json = """
+        {"protocol":1,"pid":1,"revision":0,"probe":false,"capabilities":["live","probe","screens"],
+         "screens":[{"id":"settings.general","title":"Settings > General"}],
+         "markers":{},"seen":[],"updated":"2026-11-10T10:00:00Z"}
+        """
+        let state = try JSONDecoder.limba.decode(AppState.self, from: Data(json.utf8))
+        XCTAssertEqual(state.capabilities, [.live, .probe, .deepLinks])
+        XCTAssertEqual(state.deepLinks, [AppState.DeepLink(id: "settings.general", title: "Settings > General")])
+    }
+
+    func testRoundTripWritesDeepLinks() throws {
+        let state = AppState(
+            pid: 1, language: "ro", revision: 2, probe: false, capabilities: [.deepLinks],
+            deepLinks: [.init(id: "main", title: "Main window")], markers: [:], seen: [],
+            updated: Date(timeIntervalSince1970: 0)
+        )
+        let data = try JSONEncoder.limba.encode(state)
+        let text = String(decoding: data, as: UTF8.self)
+        XCTAssertTrue(text.contains("\"deepLinks\""))
+        XCTAssertFalse(text.contains("\"screens\""))
+        XCTAssertEqual(try JSONDecoder.limba.decode(AppState.self, from: data), state)
+    }
+}

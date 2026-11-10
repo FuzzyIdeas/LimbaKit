@@ -23,10 +23,15 @@ public enum Limba {
         onMain { LimbaRuntime.shared.select(language) }
     }
 
-    /// Lets a translator open a screen of the app, to read its strings in place.
-    /// `title` is how the screen is named to the person translating, such as "Settings > General".
+    /// Lets a translator open a view of the app from Limba, to review its strings in place.
+    /// `title` is how the view is named to the person translating, such as "Settings > General".
+    public static func addDeepLink(_ id: String, title: String, open: @escaping @MainActor () -> Void) {
+        onMain { LimbaRuntime.shared.addDeepLink(id, title: title, open: open) }
+    }
+
+    @available(*, deprecated, renamed: "addDeepLink(_:title:open:)")
     public static func registerScreen(_ id: String, title: String, open: @escaping @MainActor () -> Void) {
-        onMain { LimbaRuntime.shared.registerScreen(id, title: title, open: open) }
+        addDeepLink(id, title: title, open: open)
     }
 
     /// Re-applies the current language to AppKit windows and menus, for text the app set itself.
@@ -101,7 +106,7 @@ public final class LimbaRuntime: ObservableObject, @unchecked Sendable {
     private var stageRoot: URL?
     private var stageCounter = 0
     private var stages: [URL] = []
-    private var screens: [(screen: AppState.Screen, open: @MainActor () -> Void)] = []
+    private var deepLinks: [(link: AppState.DeepLink, open: @MainActor () -> Void)] = []
     private var observers: [NSObjectProtocol] = []
     private var catalogKeys: Set<String>?
     private var pendingState: DispatchWorkItem?
@@ -235,7 +240,7 @@ public final class LimbaRuntime: ObservableObject, @unchecked Sendable {
         scheduleState()
     }
 
-    // MARK: Probe, screens, refresh
+    // MARK: Probe, deep links, refresh
 
     @MainActor
     func setProbe(_ on: Bool) {
@@ -255,15 +260,15 @@ public final class LimbaRuntime: ObservableObject, @unchecked Sendable {
     }
 
     @MainActor
-    func registerScreen(_ id: String, title: String, open: @escaping @MainActor () -> Void) {
-        screens.removeAll { $0.screen.id == id }
-        screens.append((AppState.Screen(id: id, title: title), open))
+    func addDeepLink(_ id: String, title: String, open: @escaping @MainActor () -> Void) {
+        deepLinks.removeAll { $0.link.id == id }
+        deepLinks.append((AppState.DeepLink(id: id, title: title), open))
         scheduleState()
     }
 
     @MainActor
     private func show(_ id: String) {
-        screens.first { $0.screen.id == id }?.open()
+        deepLinks.first { $0.link.id == id }?.open()
         scheduleState(after: 0.8)
     }
 
@@ -299,7 +304,8 @@ public final class LimbaRuntime: ObservableObject, @unchecked Sendable {
         case .probe:
             setProbe((info["on"] as? Bool) ?? true)
         case .show:
-            if let id = info["screen"] as? String { show(id) }
+            // Protocol 1 translators send the identifier as "screen".
+            if let id = (info["deepLink"] ?? info["screen"]) as? String { show(id) }
         case .refresh:
             refresh()
         }
@@ -325,10 +331,10 @@ public final class LimbaRuntime: ObservableObject, @unchecked Sendable {
             markers["\(number)"] = Self.split(tableKey)
         }
         var capabilities: [LimbaProtocol.Capability] = [.live, .probe]
-        if !screens.isEmpty { capabilities.append(.screens) }
+        if !deepLinks.isEmpty { capabilities.append(.deepLinks) }
         let state = AppState(
             pid: getpid(), language: language, revision: revision, probe: probe,
-            capabilities: capabilities, screens: screens.map(\.screen),
+            capabilities: capabilities, deepLinks: deepLinks.map(\.link),
             markers: markers, seen: discoveredKeys()
         )
         if let data = try? JSONEncoder.limba.encode(state) {

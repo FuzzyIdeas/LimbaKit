@@ -1,4 +1,4 @@
-# Limba protocol, version 1
+# Limba protocol, version 2
 
 Limba lets the users of a Mac app translate it into their own language with the AI model or service
 they choose. You as the developer keep the app in a single language and the users can run the Limba app
@@ -10,7 +10,7 @@ The protocol has three parts, and each uses formats that Xcode already produces:
 2. Translators write **translation files** to a known folder outside the app bundle, in the standard
    `.lproj` layout (`.strings` and `.stringsdict`). The app's code signature is never touched.
 3. A running app can take **commands** from a translator: switch language, reveal which string is
-   which on screen, open a screen. This part is optional.
+   which on screen, open a deep link. This part is optional.
 
 An app can adopt these in steps. Step 1 alone already lets a translator produce a language that the
 app uses after a relaunch.
@@ -118,7 +118,7 @@ A translator talks to a running app through distributed notifications. It posts 
 | `hello` | | the app writes its state |
 | `select` | `language`: identifier, or empty for the built-in language | switches language and saves the choice |
 | `probe` | `on`: true or false | turns markers on or off (below) |
-| `show` | `screen`: a screen identifier | opens that screen |
+| `show` | `deepLink`: a deep link identifier | opens that view of the app |
 | `refresh` | | rebuilds the app's windows, for text that only updates on a rebuild |
 
 The app answers by writing `state.json` in its translation folder and posting `limba.state` with its
@@ -126,13 +126,13 @@ bundle identifier as the object:
 
 ```json
 {
-  "protocol": 1,
+  "protocol": 2,
   "pid": 4242,
   "language": "ro",
   "revision": 12,
   "probe": true,
-  "capabilities": ["live", "probe", "screens"],
-  "screens": [{ "id": "settings.general", "title": "Settings > General" }],
+  "capabilities": ["live", "probe", "deepLinks"],
+  "deepLinks": [{ "id": "settings.general", "title": "Settings > General" }],
   "markers": { "1": ["Localizable", "Ambient light threshold"] },
   "seen": [["Localizable", "Some key that is missing from the catalogs"]]
 }

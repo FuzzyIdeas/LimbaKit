@@ -13,16 +13,31 @@ Catalog, because a translator can't reach any other text.
 
 1. Every string a person reads comes from the String Catalog.
 2. LimbaKit loads the chosen translation at launch and applies edits live.
-3. `limba audit <app>` lists no app text on any registered screen.
-4. A translation into one language reads right on every screen, with nothing cut off.
+3. `limba audit <app>` lists no app text in any view that a deep link opens.
+4. A translation into one language reads right in every view, with nothing cut off.
 
 Read `PROTOCOL.md` in the Limba repository once before starting. It is short.
 
 ## 0. Tools
 
 - Xcode 16 or later, and `python3` for `Scripts/limba-adopt.py`.
-- The `limba` command line tool: in the Limba app, choose Limba > Install Command Line Tool…, which links it
-  into `~/.local/bin`.
+- The free Limba app and its `limba` command line tool. Install both yourself when `limba` isn't
+  on `PATH`. The tool ships inside the app, and these commands do the same as the menu item
+  Limba > Install Command Line Tool…:
+
+  ```sh
+  if [ ! -d /Applications/Limba.app ]; then
+    curl -fL -o /tmp/Limba.dmg https://files.lowtechguys.com/releases/Limba.dmg
+    mnt=$(hdiutil attach -nobrowse -readonly /tmp/Limba.dmg 2>/dev/null | awk -F'\t' '/\/Volumes\//{print $NF}')
+    ditto "$mnt/Limba.app" /Applications/Limba.app
+    hdiutil detach "$mnt" -quiet
+  fi
+  mkdir -p ~/.local/bin
+  ln -sf /Applications/Limba.app/Contents/Helpers/limba ~/.local/bin/limba
+  ~/.local/bin/limba --help
+  ```
+
+  Call it as `~/.local/bin/limba` when that folder isn't on `PATH`.
 - An OpenAI-compatible endpoint for the smoke test. Use a small cheap model: a translation that
   reads well from it will read well from a larger one. The CLI does not read the model that is set
   in the Limba app. Pass `--endpoint`, `--model` and `--key-file`, or set `LIMBA_ENDPOINT`,
@@ -45,7 +60,7 @@ Find, before changing anything:
 - **Every SwiftUI root.** Each `WindowGroup`, `Window`, `Settings` and `MenuBarExtra`, plus every
   `NSHostingView` and `NSHostingController` that AppKit code creates.
 - **The Settings window,** its General pane, and how a pane gets selected (an `@AppStorage` key, a
-  tab selection). Each pane becomes a screen that translators can open.
+  tab selection). Each pane gets a deep link that translators can open from Limba.
 - **Candidate sites.** These patterns find almost all text that skips the catalog. They are plain
   regular expressions for `rg -n`, without lookarounds, so they work without PCRE2:
 
@@ -143,11 +158,11 @@ as the title is translated. Note each one here, and in section 3 match the windo
    window has a fixed or minimum size, make it taller so that the new row is not cut off. The button
    brings its own title in the first language of the Mac, so it doesn't need a key in the catalog.
 
-7. Register a screen for each Settings pane and main window:
+7. Add a deep link for each Settings pane and main window:
 
    ```swift
    for pane in SettingsPane.allCases {
-       Limba.registerScreen("settings.\(pane.rawValue)", title: "Settings > \(pane.title.key)") {
+       Limba.addDeepLink("settings.\(pane.rawValue)", title: "Settings > \(pane.title.key)") {
            selectedPane = pane          // whatever selects the pane
            NSApp.activate(ignoringOtherApps: true)
            openSettings()               // SwiftUI: the openSettings environment action
@@ -157,7 +172,7 @@ as the title is translated. Note each one here, and in section 3 match the windo
 
    Since macOS 14, SwiftUI ignores `showSettingsWindow:`; keep the `openSettings` environment action
    somewhere the closure can call it. When the settings are a `Window(id:)` scene instead of a
-   `Settings` scene, use the `openWindow` action with that id. Register the screens once at launch,
+   `Settings` scene, use the `openWindow` action with that id. Add the deep links once at launch,
    in `App.init()` or the app delegate. If the closure can't reach `openWindow` from there, open the
    window the way the app already does it elsewhere.
 
@@ -234,7 +249,7 @@ check below quietly passes or fails for the wrong reason.
 1. Build Debug, quit any installed copy of the app, launch the build. Every `limba` command below
    needs the app running: after a relaunch, wait until it is up before the next command.
 2. `limba apps`: the app is listed with its string count.
-3. `limba audit <app>`: opens every registered screen with markers on and lists each text that skips
+3. `limba audit <app>`: opens every deep link with markers on and lists each text that skips
    the catalog. Fix and repeat until only text that macOS itself draws remains ("Sidebar", standard
    window buttons). It also lists keys the app looked up at runtime that the shipped catalog lacks.
 4. The audit reads the main menu bar, but it cannot open a status item's menu, alerts, notifications,
@@ -243,7 +258,7 @@ check below quietly passes or fails for the wrong reason.
 5. Quit and relaunch the app after an audit. Text that the app kept while markers were on (a window
    title, a cached label) keeps the invisible markers until the app restarts.
 6. `limba pseudo <app>` then `limba use <app> en-XA`: every string becomes accented, 30% longer and
-   wrapped in ⟦ ⟧. On each screen (`limba show <app> <screen>`), text without brackets is hardcoded,
+   wrapped in ⟦ ⟧. In each view (`limba show <app> <deep link>`), text without brackets is hardcoded,
    and a cut-off ⟦… shows a layout that a longer language will break.
 7. Smoke test with a cheap model, then `limba use <app> ro` (or any language you can read) and look at
    every screen: no English left except names, plurals right, nothing cut off, menus translated.
@@ -274,5 +289,5 @@ check below quietly passes or fails for the wrong reason.
 
 ## 7. Report
 
-Say which screens were audited and what the audit printed, which places were checked in code only,
+Say which views were audited and what the audit printed, which places were checked in code only,
 the language used for the smoke test, and any string left hardcoded on purpose, with the reason.
