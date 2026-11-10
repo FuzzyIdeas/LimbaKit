@@ -23,7 +23,7 @@ parser.add_argument("--target", required=True)
 parser.add_argument("--package", required=True)
 parser.add_argument("--catalog", action="append", required=True)
 parser.add_argument("--manifest")
-parser.add_argument("--version", default="0.3.0", help="minimum version for a remote package")
+parser.add_argument("--version", default="0.3.1", help="minimum version for a remote package")
 args = parser.parse_args()
 
 path = args.project.rstrip("/") + "/project.pbxproj"

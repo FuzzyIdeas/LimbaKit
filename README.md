@@ -49,7 +49,7 @@ give your terminal app Accessibility access, which `limba audit` needs.
 ## Implement it yourself
 
 ```swift
-.package(url: "https://github.com/FuzzyIdeas/LimbaKit", from: "0.3.0")
+.package(url: "https://github.com/FuzzyIdeas/LimbaKit", from: "0.3.1")
 ```
 
 In this repository:

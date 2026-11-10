@@ -108,7 +108,8 @@ public final class LimbaRuntime: ObservableObject, @unchecked Sendable {
     private var stages: [URL] = []
     private var deepLinks: [(link: AppState.DeepLink, open: @MainActor () -> Void)] = []
     private var observers: [NSObjectProtocol] = []
-    private var catalogKeys: Set<String>?
+    /// Bumped by every activation, so a copy that finishes after a newer one started is dropped.
+    private var activation = 0
     private var pendingState: DispatchWorkItem?
     /// File I/O that runs on every file event or state change stays off the main thread: a directory
     /// listing or a rename can stall for seconds in the file system, and the app would hang with it.
@@ -139,7 +140,8 @@ public final class LimbaRuntime: ObservableObject, @unchecked Sendable {
 
         languages = LimbaPaths.languages(in: folder)
         if let saved = UserDefaults.standard.string(forKey: LimbaProtocol.languageDefaultsKey), !saved.isEmpty {
-            activate(saved)
+            // Synchronous on purpose: the translation has to be in place before the first window draws.
+            activate(saved, synchronously: true)
         }
 
         watcher = DirectoryWatcher(url: folder) { [weak self] paths in
@@ -159,49 +161,94 @@ public final class LimbaRuntime: ObservableObject, @unchecked Sendable {
         } else {
             UserDefaults.standard.removeObject(forKey: LimbaProtocol.languageDefaultsKey)
         }
-        if let folder { languages = LimbaPaths.languages(in: folder) }
-        guard value != language else {
-            scheduleState()
-            return
+        guard let folder else { return }
+        Self.ioQueue.async { [weak self] in
+            let found = LimbaPaths.languages(in: folder)
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    self.languages = found
+                    guard value != self.language else {
+                        self.scheduleState()
+                        return
+                    }
+                    self.activate(value) { self.changed("select \(value ?? "built-in")") }
+                }
+            }
         }
-        activate(value)
-        changed("select \(value ?? "built-in")")
     }
 
     /// Copies the translation to a new folder and points the hook at it. NSBundle caches string tables
     /// per path for the life of the process, so each revision gets a path it has never seen.
+    ///
+    /// The copy runs on `ioQueue` unless `synchronously` is set, and `then` runs on the main thread once
+    /// the hook points at the new copy (or the copy failed). An activation that a newer one replaced
+    /// while it copied does nothing, and its `then` never runs.
     @MainActor
-    private func activate(_ requested: String?) {
+    private func activate(_ requested: String?, synchronously: Bool = false, then: (@MainActor () -> Void)? = nil) {
+        activation += 1
         guard let requested, let folder, let stageRoot, languages.contains(requested) else {
             LBHook.setOverlayBundle(nil, language: nil)
             language = nil
+            then?()
             return
         }
-        let fm = FileManager.default
+        let id = activation
         stageCounter += 1
         let stage = stageRoot.appendingPathComponent("\(stageCounter)", isDirectory: true)
         let source = LimbaPaths.lproj(requested, in: folder)
-        let destination = LimbaPaths.lproj(requested, in: stage)
-        do {
-            // Read and write the bytes instead of copyItem: an APFS clone shows up as an FSEvent on the
-            // source files, which would trigger another reload.
-            try fm.createDirectory(at: destination, withIntermediateDirectories: true)
-            for file in try fm.contentsOfDirectory(at: source, includingPropertiesForKeys: nil) where !file.lastPathComponent.hasPrefix(".") {
-                try Data(contentsOf: file).write(to: destination.appendingPathComponent(file.lastPathComponent))
+
+        // A copy that never becomes the overlay is removed, or it stays in Caches until the next launch.
+        let discard = { Self.ioQueue.async { try? FileManager.default.removeItem(at: stage) } }
+        let finish: @MainActor (Result<[String], Error>) -> Void = { [weak self] result in
+            guard let self, id == self.activation else {
+                discard()
+                return
             }
-        } catch {
-            NSLog("Limba: could not load %@: %@", requested, error.localizedDescription)
+            switch result {
+            case let .success(fingerprint):
+                self.install(stage, language: requested, fingerprint: fingerprint)
+            case let .failure(error):
+                discard()
+                NSLog("Limba: could not load %@: %@", requested, error.localizedDescription)
+            }
+            then?()
+        }
+        if synchronously {
+            finish(Result { try Self.copy(source, toStage: stage, language: requested) })
             return
         }
+        Self.ioQueue.async {
+            let result = Result { try Self.copy(source, toStage: stage, language: requested) }
+            DispatchQueue.main.async { MainActor.assumeIsolated { finish(result) } }
+        }
+    }
+
+    /// Copies `<language>.lproj` into `stage` and returns the fingerprint of the source files.
+    private static func copy(_ source: URL, toStage stage: URL, language: String) throws -> [String] {
+        let fm = FileManager.default
+        let destination = LimbaPaths.lproj(language, in: stage)
+        // Read and write the bytes instead of copyItem: an APFS clone shows up as an FSEvent on the
+        // source files, which would trigger another reload.
+        try fm.createDirectory(at: destination, withIntermediateDirectories: true)
+        for file in try fm.contentsOfDirectory(at: source, includingPropertiesForKeys: nil) where !file.lastPathComponent.hasPrefix(".") {
+            try Data(contentsOf: file).write(to: destination.appendingPathComponent(file.lastPathComponent))
+        }
+        return fingerprint(source)
+    }
+
+    @MainActor
+    private func install(_ stage: URL, language requested: String, fingerprint: [String]) {
         guard let overlay = Bundle(path: stage.path) else { return }
         LBHook.setOverlayBundle(overlay, language: requested)
         language = requested
-        loadedFingerprint = Self.fingerprint(source)
+        loadedFingerprint = fingerprint
 
         // Keep the previous copy for a moment: a lookup on another thread may still be reading it.
         stages.append(stage)
         while stages.count > 2 {
-            try? fm.removeItem(at: stages.removeFirst())
+            let old = stages.removeFirst()
+            Self.ioQueue.async { try? FileManager.default.removeItem(at: old) }
         }
     }
 
@@ -243,17 +290,15 @@ public final class LimbaRuntime: ObservableObject, @unchecked Sendable {
 
         if let language {
             if !languages.contains(language) {
-                activate(nil)
-                changed("\(language) removed")
+                activate(nil) { self.changed("\(language) removed") }
             } else if relevant.contains(where: { $0.contains("/\(language).lproj") }),
                       language != scanned || fingerprint != loadedFingerprint {
-                activate(language)
-                changed("files changed: \(relevant.map { ($0 as NSString).lastPathComponent }.joined(separator: ", "))")
+                let names = relevant.map { ($0 as NSString).lastPathComponent }.joined(separator: ", ")
+                activate(language) { self.changed("files changed: \(names)") }
             }
         } else if let saved = UserDefaults.standard.string(forKey: LimbaProtocol.languageDefaultsKey),
                   languages.contains(saved) {
-            activate(saved)
-            changed("\(saved) appeared")
+            activate(saved) { self.changed("\(saved) appeared") }
         }
         scheduleState()
     }
@@ -350,16 +395,22 @@ public final class LimbaRuntime: ObservableObject, @unchecked Sendable {
         }
         var capabilities: [LimbaProtocol.Capability] = [.live, .probe]
         if !deepLinks.isEmpty { capabilities.append(.deepLinks) }
-        let state = AppState(
-            pid: getpid(), language: language, revision: revision, probe: probe,
-            capabilities: capabilities, deepLinks: deepLinks.map(\.link),
-            markers: markers, seen: discoveredKeys()
-        )
-        let data = try? JSONEncoder.limba.encode(state)
+        // LimbaKit's own text is listed even before it shows: the language picker stays hidden until
+        // the first translation exists, so its label would otherwise never reach that translation.
+        let own = Self.ownKeys.map { SourceString.id(table: "Localizable", key: $0) }
+        let seen = LBHook.seenTableKeys().union(own)
+        let (pid, language, revision, probe, deepLinks) = (getpid(), language, revision, probe, deepLinks.map(\.link))
+        let resources = LimbaPaths.resources(of: bundle.bundleURL)
         let url = folder.appendingPathComponent(LimbaProtocol.stateFile)
         let bundleIdentifier = bundleIdentifier
+        // Parsing the shipped catalogs (once) and writing the file both stay off the main thread.
         Self.ioQueue.async {
-            if let data { try? StringsFiles.writeAtomically(data, to: url) }
+            let state = AppState(
+                pid: pid, language: language, revision: revision, probe: probe,
+                capabilities: capabilities, deepLinks: deepLinks,
+                markers: markers, seen: Self.discoveredKeys(seen, resources: resources)
+            )
+            if let data = try? JSONEncoder.limba.encode(state) { try? StringsFiles.writeAtomically(data, to: url) }
             DistributedNotificationCenter.default().postNotificationName(
                 LimbaProtocol.stateNotification, object: bundleIdentifier, userInfo: nil, deliverImmediately: true
             )
@@ -367,36 +418,33 @@ public final class LimbaRuntime: ObservableObject, @unchecked Sendable {
     }
 
     /// Keys the app looked up that no shipped catalog contains, such as strings from Swift packages
-    /// that resolve against the main bundle.
-    private func discoveredKeys() -> [[String]] {
-        let known = shippedCatalogKeys()
+    /// that resolve against the main bundle. Runs on `ioQueue` only.
+    private static func discoveredKeys(_ seen: Set<String>, resources: URL) -> [[String]] {
+        let shipped = shippedCatalog(resources)
         // Frameworks look up their own keys in the main bundle too (AccessibilityImageDescriptions,
         // InfoPlist); only tables that the app ships hold the app's strings.
-        let tables: Set<String> = shippedTables.isEmpty ? ["Localizable"] : shippedTables
-        // LimbaKit's own text is listed even before it shows: the language picker stays hidden until
-        // the first translation exists, so its label would otherwise never reach that translation.
-        let own = Self.ownKeys.map { SourceString.id(table: "Localizable", key: $0) }
-        let pairs: [[String]] = LBHook.seenTableKeys().union(own).filter { !known.contains($0) }.map(Self.split)
-        return pairs
+        let tables: Set<String> = shipped.tables.isEmpty ? ["Localizable"] : shipped.tables
+        return seen.filter { !shipped.keys.contains($0) }.map(split)
             .filter { $0.count == 2 && tables.contains($0[0]) && !$0[1].isEmpty }
             .sorted { $0[1] < $1[1] }
     }
 
-    private var shippedTables = Set<String>()
+    /// The keys and table names of the app's string catalogs, read once. Touched on `ioQueue` only.
+    private static var shipped: (keys: Set<String>, tables: Set<String>)?
 
-    private func shippedCatalogKeys() -> Set<String> {
-        if let catalogKeys { return catalogKeys }
+    private static func shippedCatalog(_ folder: URL) -> (keys: Set<String>, tables: Set<String>) {
+        if let shipped { return shipped }
         var keys = Set<String>()
-        let folder = LimbaPaths.resources(of: bundle.bundleURL)
+        var tables = Set<String>()
         let files = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? []
         for file in files where file.pathExtension == "xcstrings" {
             guard let catalog = try? StringCatalog.load(file) else { continue }
             let table = file.deletingPathExtension().lastPathComponent
-            if table != "InfoPlist" { shippedTables.insert(table) }
+            if table != "InfoPlist" { tables.insert(table) }
             for key in catalog.strings.keys { keys.insert(SourceString.id(table: table, key: key)) }
         }
-        catalogKeys = keys
-        return keys
+        shipped = (keys, tables)
+        return (keys, tables)
     }
 
     static func fingerprint(_ folder: URL) -> [String] {
