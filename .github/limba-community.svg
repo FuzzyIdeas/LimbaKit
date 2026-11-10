@@ -1,0 +1,11 @@
+<svg width="1015" height="340" viewBox="0 0 1015 340" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path fill-rule="evenodd" clip-rule="evenodd" d="M952.393 0H61.99C8.847 0 0 18.4 0 62.162V278.229C0 321.956 18.2 340 61.93 340H952.4C996.158 340 1015 321.931 1015 278.172V62.162C1015 18.4 996.154 0 952.393 0Z" fill="black"/>
+<g stroke="white" stroke-width="13" fill="none">
+<circle cx="175" cy="170" r="92"/>
+<ellipse cx="175" cy="170" rx="40" ry="92"/>
+<line x1="83" y1="170" x2="267" y2="170"/>
+<path d="M98 120H252M98 220H252"/>
+</g>
+<text x="305" y="132" fill="white" font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="66" font-weight="600">Limba Community</text>
+<text x="300" y="258" fill="white" font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="112" font-weight="600" textLength="660" lengthAdjust="spacingAndGlyphs">Translations</text>
+</svg>

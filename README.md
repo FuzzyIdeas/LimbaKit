@@ -1,4 +1,19 @@
-# LimbaKit
+<p align="center">
+    <a href="https://lowtechguys.com/limba"><img width="128" height="128" src=".github/limba-icon.png" style="filter: drop-shadow(0px 2px 4px rgba(80, 50, 6, 0.2));"></a>
+    <h1 align="center"><code style="text-shadow: 0px 3px 10px rgba(8, 0, 6, 0.35); font-size: 3rem; font-family: ui-monospace, Menlo, monospace; font-weight: 800; background: transparent; color: #4d3e56; padding: 0.2rem 0.2rem; border-radius: 6px">LimbaKit</code></h1>
+    <h4 align="center" style="padding: 0; margin: 0; font-family: ui-monospace, monospace;">Translate Mac apps into your language</h4>
+    <h6 align="center" style="padding: 0; margin: 0; font-family: ui-monospace, monospace; font-weight: 400;">On-demand localization in your hands</h6>
+</p>
+
+<p align="center">
+    <a href="https://files.lowtechguys.com/releases/Limba.dmg">
+        <img width=200 src="https://files.lowtechguys.com/macos-app.svg">
+    </a>
+    &nbsp;
+    <a href="https://limba.lowtechguys.com">
+        <img width=200 src=".github/limba-community.svg">
+    </a>
+</p>
 
 LimbaKit is a Swift package that allows you to give your users the ability to translate your Mac
 app on their own Mac. You won't have to include localizations in your app anymore.
