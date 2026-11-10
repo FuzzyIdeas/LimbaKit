@@ -64,6 +64,32 @@ final class HookTests: XCTestCase {
         XCTAssertEqual(String(a.characters), "Text îngroșat")
     }
 
+    /// SwiftUI's Text(LocalizedStringResource) goes through a private Foundation lookup that macOS 27 renamed.
+    /// Each Mac has one of the two, and the overlay has to win in whichever one it has: on macOS 26, a missing
+    /// hook left a sidebar of LocalizedStringResource titles in English.
+    func testPrivateResourceLookupUsesOverlay() throws {
+        typealias NoCache = @convention(c) (
+            AnyObject, Selector, NSString, NSString?, NSString?, NSArray?,
+            UnsafeMutablePointer<AnyObject?>?, UnsafeMutablePointer<AnyObject?>?
+        ) -> AnyObject?
+        let selectors = [
+            "_localizedStringNoCacheNoMarkdownParsingForKey:value:table:bundleLocalizations:localization:formatSpecifierConfiguration:",
+            "_localizedStringNoCacheNoMarkdownParsingForKey:value:table:localizations:actualTableURL:formatSpecifierConfiguration:",
+        ].map(NSSelectorFromString).filter { appBundle.responds(to: $0) }
+        guard !selectors.isEmpty else { throw XCTSkip("this macOS has neither private lookup") }
+
+        LBHook.setOverlayBundle(try makeOverlay(["Hello": "Salut"]), language: "ro")
+        for sel in selectors {
+            let lookup = unsafeBitCast(appBundle.method(for: sel), to: NoCache.self)
+            var extra: AnyObject?
+            var config: AnyObject?
+            let r = lookup(appBundle, sel, "Hello", nil, nil, ["en"] as NSArray, &extra, &config)
+            XCTAssertEqual(r as? String, "Salut", NSStringFromSelector(sel))
+            let missing = lookup(appBundle, sel, "Only English", nil, nil, ["en"] as NSArray, &extra, &config)
+            XCTAssertEqual(missing as? String, "Only English", NSStringFromSelector(sel))
+        }
+    }
+
     /// A lookup that names a language makes Foundation parse the whole strings file again on every call,
     /// and SwiftUI does one for each Text it draws. The hook has to remember results for each overlay,
     /// or a window full of text holds the main thread. Changing the file under the overlay shows whether

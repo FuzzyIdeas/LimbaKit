@@ -130,7 +130,7 @@ static void LBRemember(id value, NSString *tableKey) {
 #pragma mark - Overlay lookups
 
 typedef NSString *(*LBString4)(id, SEL, NSString *, NSString *, NSString *, id);
-typedef id (*LBNoCache)(id, SEL, NSString *, NSString *, NSString *, NSArray *, NSString *__autoreleasing *, id __autoreleasing *);
+typedef id (*LBNoCache)(id, SEL, NSString *, NSString *, NSString *, NSArray *, id __autoreleasing *, id __autoreleasing *);
 typedef id (*LBFlagged)(id, SEL, NSString *, NSString *, NSString *, NSArray *, NSString *__autoreleasing *, BOOL);
 
 static NSString *LBOverlayString(NSString *key, NSString *table) {
@@ -175,27 +175,29 @@ static NSAttributedString *LBOverlayAttributed(NSString *key, NSString *table) {
     return r;
 }
 
-static id LBOverlayNoCache(SEL sel, NSString *key, NSString *table, NSArray *bundleLocalizations, NSString *__autoreleasing *locOut, id __autoreleasing *configOut) {
+// `extraOut` is the localization that served the string on macOS 27, and the URL of the table on macOS 26
+// and older. Each selector keeps its results under its own prefix, so the two kinds never mix.
+static id LBOverlayNoCache(SEL sel, NSString *prefix, NSString *key, NSString *table, NSArray *bundleLocalizations, id __autoreleasing *extraOut, id __autoreleasing *configOut) {
     NSBundle *ov; NSArray *langs;
     LBSnapshot(&ov, NULL, &langs);
     if (!ov || !key || ![ov respondsToSelector:sel]) return nil;
     // Without an overlay language the result depends on the caller's localizations, so skip the cache.
     NSMutableDictionary *results = langs ? LBResults() : nil;
-    NSString *ck = [@"n" stringByAppendingString:LBTableKey(table, key)];
+    NSString *ck = [prefix stringByAppendingString:LBTableKey(table, key)];
     NSArray *hit = LBCached(results, ck);
     if (hit) {
         if (!LBUnwrap(hit[0])) return nil;
-        if (locOut) *locOut = LBUnwrap(hit[1]);
+        if (extraOut) *extraOut = LBUnwrap(hit[1]);
         if (configOut) *configOut = LBUnwrap(hit[2]);
         return hit[0];
     }
-    NSString *loc = nil;
+    id extra = nil;
     id config = nil;
-    id r = ((LBNoCache)objc_msgSend)(ov, sel, key, kMissing, table, langs ?: bundleLocalizations, &loc, &config);
+    id r = ((LBNoCache)objc_msgSend)(ov, sel, key, kMissing, table, langs ?: bundleLocalizations, &extra, &config);
     if (!r || [r isEqual:kMissing]) r = nil;
-    LBStore(results, ck, r, loc, config);
+    LBStore(results, ck, r, extra, config);
     if (!r) return nil;
-    if (locOut) *locOut = loc;
+    if (extraOut) *extraOut = extra;
     if (configOut) *configOut = config;
     return r;
 }
@@ -315,12 +317,29 @@ static BOOL LBAdd(Class sub, Class sup, NSString *name, NSString *expectedTypes,
             NSString *n6 = @"_localizedStringNoCacheNoMarkdownParsingForKey:value:table:bundleLocalizations:localization:formatSpecifierConfiguration:";
             SEL s6 = NSSelectorFromString(n6);
             LBNoCache o6 = (LBNoCache)class_getMethodImplementation(sup, s6);
-            LBAdd(sub, sup, n6, @"@@:@@@@^@^@", ^id(id me, NSString *key, NSString *value, NSString *table, NSArray *bl, NSString *__autoreleasing *locOut, id __autoreleasing *configOut) {
+            LBAdd(sub, sup, n6, @"@@:@@@@^@^@", ^id(id me, NSString *key, NSString *value, NSString *table, NSArray *bl, id __autoreleasing *locOut, id __autoreleasing *configOut) {
                 tDepth++;
                 BOOL outer = tDepth == 1 && key;
                 NSString *tk = outer ? LBTableKey(table, key) : nil;
-                id r = outer ? LBOverlayNoCache(s6, key, table, bl, locOut, configOut) : nil;
+                id r = outer ? LBOverlayNoCache(s6, @"n", key, table, bl, locOut, configOut) : nil;
                 if (!r) r = o6(me, s6, key, value, table, bl, locOut, configOut);
+                if (outer) { r = LBMark(r, tk, YES); LBRemember(r, tk); }
+                tDepth--;
+                return r;
+            }, installed);
+
+            // The same lookup on macOS 26 and older, where SwiftUI's Text(LocalizedStringResource) calls it with
+            // the localizations to try and gets back the URL of the table. It was missing, so a sidebar of
+            // LocalizedStringResource titles stayed in English on macOS 26 while it was translated on macOS 27.
+            NSString *n9 = @"_localizedStringNoCacheNoMarkdownParsingForKey:value:table:localizations:actualTableURL:formatSpecifierConfiguration:";
+            SEL s9 = NSSelectorFromString(n9);
+            LBNoCache o9 = (LBNoCache)class_getMethodImplementation(sup, s9);
+            LBAdd(sub, sup, n9, @"@@:@@@@^@^@", ^id(id me, NSString *key, NSString *value, NSString *table, NSArray *langs, id __autoreleasing *urlOut, id __autoreleasing *configOut) {
+                tDepth++;
+                BOOL outer = tDepth == 1 && key;
+                NSString *tk = outer ? LBTableKey(table, key) : nil;
+                id r = outer ? LBOverlayNoCache(s9, @"u", key, table, langs, urlOut, configOut) : nil;
+                if (!r) r = o9(me, s9, key, value, table, langs, urlOut, configOut);
                 if (outer) { r = LBMark(r, tk, YES); LBRemember(r, tk); }
                 tDepth--;
                 return r;
