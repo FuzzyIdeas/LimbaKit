@@ -110,9 +110,10 @@ public final class LimbaRuntime: ObservableObject, @unchecked Sendable {
     private var observers: [NSObjectProtocol] = []
     private var catalogKeys: Set<String>?
     private var pendingState: DispatchWorkItem?
-    /// File I/O for the state file stays off the main thread: a rename can stall for seconds in the
-    /// file system (a path lookup by file ID), and the app would hang with it.
-    private static let stateQueue = DispatchQueue(label: "LimbaKit.state", qos: .utility)
+    /// File I/O that runs on every file event or state change stays off the main thread: a directory
+    /// listing or a rename can stall for seconds in the file system, and the app would hang with it.
+    /// Serial, so scans and writes finish in the order they were started.
+    private static let ioQueue = DispatchQueue(label: "LimbaKit.io", qos: .utility)
     /// Names, sizes and dates of the loaded translation files, to ignore events that changed nothing.
     private var loadedFingerprint: [String] = []
 
@@ -223,7 +224,21 @@ public final class LimbaRuntime: ObservableObject, @unchecked Sendable {
         }
         guard !relevant.isEmpty, let folder else { return }
 
-        let found = LimbaPaths.languages(in: folder)
+        // List the folder off the main thread, then act on the result back on it.
+        let current = language
+        Self.ioQueue.async { [weak self] in
+            let found = LimbaPaths.languages(in: folder)
+            let scannedPrint = current.map { Self.fingerprint(LimbaPaths.lproj($0, in: folder)) }
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    self?.apply(found: found, fingerprint: scannedPrint, of: current, relevant: relevant)
+                }
+            }
+        }
+    }
+
+    @MainActor
+    private func apply(found: [String], fingerprint: [String]?, of scanned: String?, relevant: [String]) {
         if found != languages { languages = found }
 
         if let language {
@@ -231,7 +246,7 @@ public final class LimbaRuntime: ObservableObject, @unchecked Sendable {
                 activate(nil)
                 changed("\(language) removed")
             } else if relevant.contains(where: { $0.contains("/\(language).lproj") }),
-                      Self.fingerprint(LimbaPaths.lproj(language, in: folder)) != loadedFingerprint {
+                      language != scanned || fingerprint != loadedFingerprint {
                 activate(language)
                 changed("files changed: \(relevant.map { ($0 as NSString).lastPathComponent }.joined(separator: ", "))")
             }
@@ -343,7 +358,7 @@ public final class LimbaRuntime: ObservableObject, @unchecked Sendable {
         let data = try? JSONEncoder.limba.encode(state)
         let url = folder.appendingPathComponent(LimbaProtocol.stateFile)
         let bundleIdentifier = bundleIdentifier
-        Self.stateQueue.async {
+        Self.ioQueue.async {
             if let data { try? StringsFiles.writeAtomically(data, to: url) }
             DistributedNotificationCenter.default().postNotificationName(
                 LimbaProtocol.stateNotification, object: bundleIdentifier, userInfo: nil, deliverImmediately: true
