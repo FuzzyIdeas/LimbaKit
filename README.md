@@ -34,7 +34,7 @@ give your terminal app Accessibility access, which `limba audit` needs.
 ## Implement it yourself
 
 ```swift
-.package(url: "https://github.com/FuzzyIdeas/LimbaKit", from: "0.2.3")
+.package(url: "https://github.com/FuzzyIdeas/LimbaKit", from: "0.3.0")
 ```
 
 In this repository:
@@ -161,21 +161,20 @@ Limba.addDeepLink("settings.general", title: "Settings > General") {
  reads the app's state      ◀───  state.json                      ◀───    writes it after every change
 ```
 
-1. **Lookups.** `Limba.start()` subclasses the class of the app's main bundle at runtime. The
-   subclass overrides the methods that Foundation, SwiftUI and AppKit use to look up localized
-   strings. A lookup checks the translation first and falls back to the text built into the app.
-2. **Live updates.** LimbaKit watches the translation folder. When a file changes, LimbaKit loads
-   the files again and sets a new `Locale` in the SwiftUI environment. The new `Locale` differs only
-   by a private keyword, so every `Text` resolves again and views keep their state. AppKit windows
-   and menus get their text set again.
+1. **Lookups.** `Limba.start()` subclasses the class of the app's main bundle at runtime.
+   - The subclass overrides the methods that Foundation, SwiftUI and AppKit use to look up localized
+   strings.
+   - A lookup checks the translation first and falls back to the text built into the app.
+2. **Live updates.** LimbaKit watches the translation folder.
+   - When a file changes, LimbaKit loads the files again and sets a new `Locale` in the SwiftUI environment.
 3. **Commands.** Limba sends commands to the running app as distributed notifications, and the app
-   answers by writing `state.json`. [PROTOCOL.md](PROTOCOL.md) lists the commands and the files.
+   answers by writing `state.json`.
+   - [PROTOCOL.md](PROTOCOL.md) documents the commands and the files.
 
 *LimbaKit overrides a private method only when its type signature matches what LimbaKit expects. On
 a system where one of them changed, that path falls back to the built-in text instead of crashing.*
 
 ## Limits
 
-- Text that macOS provides stays in the system language: the items that every app menu has (About,
-  Hide, Quit), system alerts, open and save panels.
+- System strings like app menus (About, Hide, Quit) render in the system language.
 - A sandboxed app keeps its translations inside a restricted filesystem container. macOS may ask for permission when Limba tries to write the translation files there.
