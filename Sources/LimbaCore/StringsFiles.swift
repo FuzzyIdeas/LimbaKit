@@ -113,10 +113,12 @@ public enum StringsFiles {
         try fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         let tmp = url.deletingLastPathComponent().appendingPathComponent(".\(url.lastPathComponent).\(UUID().uuidString).tmp")
         try data.write(to: tmp)
-        if fm.fileExists(atPath: url.path) {
-            _ = try fm.replaceItemAt(url, withItemAt: tmp)
-        } else {
-            try fm.moveItem(at: tmp, to: url)
+        // rename(2) replaces the destination atomically on the same volume. replaceItemAt does
+        // much more (it resolves both files by ID through fsgetpath) and was seen blocking for 30 s.
+        guard rename(tmp.path, url.path) == 0 else {
+            let code = errno
+            try? fm.removeItem(at: tmp)
+            throw CocoaError(.fileWriteUnknown, userInfo: [NSFilePathErrorKey: url.path, NSUnderlyingErrorKey: POSIXError(POSIXErrorCode(rawValue: code) ?? .EIO)])
         }
     }
 }

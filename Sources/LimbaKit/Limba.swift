@@ -110,6 +110,9 @@ public final class LimbaRuntime: ObservableObject, @unchecked Sendable {
     private var observers: [NSObjectProtocol] = []
     private var catalogKeys: Set<String>?
     private var pendingState: DispatchWorkItem?
+    /// File I/O for the state file stays off the main thread: a rename can stall for seconds in the
+    /// file system (a path lookup by file ID), and the app would hang with it.
+    private static let stateQueue = DispatchQueue(label: "LimbaKit.state", qos: .utility)
     /// Names, sizes and dates of the loaded translation files, to ignore events that changed nothing.
     private var loadedFingerprint: [String] = []
 
@@ -337,12 +340,15 @@ public final class LimbaRuntime: ObservableObject, @unchecked Sendable {
             capabilities: capabilities, deepLinks: deepLinks.map(\.link),
             markers: markers, seen: discoveredKeys()
         )
-        if let data = try? JSONEncoder.limba.encode(state) {
-            try? StringsFiles.writeAtomically(data, to: folder.appendingPathComponent(LimbaProtocol.stateFile))
+        let data = try? JSONEncoder.limba.encode(state)
+        let url = folder.appendingPathComponent(LimbaProtocol.stateFile)
+        let bundleIdentifier = bundleIdentifier
+        Self.stateQueue.async {
+            if let data { try? StringsFiles.writeAtomically(data, to: url) }
+            DistributedNotificationCenter.default().postNotificationName(
+                LimbaProtocol.stateNotification, object: bundleIdentifier, userInfo: nil, deliverImmediately: true
+            )
         }
-        DistributedNotificationCenter.default().postNotificationName(
-            LimbaProtocol.stateNotification, object: bundleIdentifier, userInfo: nil, deliverImmediately: true
-        )
     }
 
     /// Keys the app looked up that no shipped catalog contains, such as strings from Swift packages
