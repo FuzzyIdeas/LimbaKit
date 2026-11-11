@@ -118,12 +118,20 @@ public extension Limba {
     }
 
     /// Limba's icon: the installed app's, or a copy kept in this package when Limba is not installed.
+    /// Looked up once: the button renders often, and each LaunchServices query can wait on lsd.
     @MainActor static var translatorIcon: NSImage {
+        if let cachedIcon { return cachedIcon }
+        let icon: NSImage
         if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: translatorBundleIdentifier) {
-            return NSWorkspace.shared.icon(forFile: url.path)
+            icon = NSWorkspace.shared.icon(forFile: url.path)
+        } else {
+            icon = bundledIcon ?? NSImage(systemSymbolName: "character.bubble", accessibilityDescription: nil) ?? NSImage()
         }
-        return bundledIcon ?? NSImage(systemSymbolName: "character.bubble", accessibilityDescription: nil) ?? NSImage()
+        cachedIcon = icon
+        return icon
     }
+
+    @MainActor private static var cachedIcon: NSImage?
 
     /// Read from the package's resource bundle without `Bundle.module`, which stops the process when
     /// the bundle is missing.

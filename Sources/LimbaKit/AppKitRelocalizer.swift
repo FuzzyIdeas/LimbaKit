@@ -11,8 +11,20 @@ import LimbaHook
 /// updates those.
 @MainActor
 enum AppKitRelocalizer {
+    /// Built from the format strings seen so far, and built again only when more were seen. Compiling
+    /// one regex per format on every opened menu made menus slow to open in apps with many formats.
+    private static var cachedFormats: (count: Int, index: FormatIndex)?
+
+    private static func formatIndex() -> FormatIndex {
+        let values = LBHook.formatValues()
+        if let cachedFormats, cachedFormats.count == values.count { return cachedFormats.index }
+        let index = FormatIndex(values)
+        cachedFormats = (values.count, index)
+        return index
+    }
+
     static func relocalizeEverything() {
-        let formats = FormatIndex(LBHook.formatValues())
+        let formats = formatIndex()
         for window in NSApp.windows {
             relocalize(window: window, formats: formats)
         }
@@ -20,7 +32,7 @@ enum AppKitRelocalizer {
     }
 
     static func relocalize(menu: NSMenu) {
-        relocalize(menu: menu, formats: FormatIndex(LBHook.formatValues()))
+        relocalize(menu: menu, formats: formatIndex())
     }
 
     // MARK: Walking

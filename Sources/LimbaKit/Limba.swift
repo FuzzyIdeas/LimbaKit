@@ -110,6 +110,11 @@ public final class LimbaRuntime: ObservableObject, @unchecked Sendable {
     private var observers: [NSObjectProtocol] = []
     /// Bumped by every activation, so a copy that finishes after a newer one started is dropped.
     private var activation = 0
+    /// The newest activation and selection, readable from `ioQueue`, so that work queued behind a newer
+    /// request is skipped instead of run. A burst of language changes would otherwise copy the
+    /// translation once per change and keep the queue busy for seconds.
+    private let newest = OSAllocatedUnfairLock(initialState: (activation: 0, selection: 0))
+    private var selection = 0
     private var pendingState: DispatchWorkItem?
     /// File I/O that runs on every file event or state change stays off the main thread: a directory
     /// listing or a rename can stall for seconds in the file system, and the app would hang with it.
@@ -162,11 +167,15 @@ public final class LimbaRuntime: ObservableObject, @unchecked Sendable {
             UserDefaults.standard.removeObject(forKey: LimbaProtocol.languageDefaultsKey)
         }
         guard let folder else { return }
+        selection += 1
+        let id = selection
+        newest.withLock { $0.selection = id }
         Self.ioQueue.async { [weak self] in
+            guard let self, self.newest.withLock({ $0.selection }) == id else { return }
             let found = LimbaPaths.languages(in: folder)
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
-                    guard let self else { return }
+                    guard id == self.selection else { return }
                     self.languages = found
                     guard value != self.language else {
                         self.scheduleState()
@@ -187,6 +196,8 @@ public final class LimbaRuntime: ObservableObject, @unchecked Sendable {
     @MainActor
     private func activate(_ requested: String?, synchronously: Bool = false, then: (@MainActor () -> Void)? = nil) {
         activation += 1
+        let current = activation
+        newest.withLock { $0.activation = current }
         guard let requested, let folder, let stageRoot, languages.contains(requested) else {
             LBHook.setOverlayBundle(nil, language: nil)
             language = nil
@@ -218,7 +229,9 @@ public final class LimbaRuntime: ObservableObject, @unchecked Sendable {
             finish(Result { try Self.copy(source, toStage: stage, language: requested) })
             return
         }
-        Self.ioQueue.async {
+        Self.ioQueue.async { [newest] in
+            // A newer activation replaced this one while it waited: its copy would be thrown away.
+            guard newest.withLock({ $0.activation }) == id else { return }
             let result = Result { try Self.copy(source, toStage: stage, language: requested) }
             DispatchQueue.main.async { MainActor.assumeIsolated { finish(result) } }
         }
@@ -229,10 +242,17 @@ public final class LimbaRuntime: ObservableObject, @unchecked Sendable {
         let fm = FileManager.default
         let destination = LimbaPaths.lproj(language, in: stage)
         // Read and write the bytes instead of copyItem: an APFS clone shows up as an FSEvent on the
-        // source files, which would trigger another reload.
+        // source files, which would trigger another reload. Each table is checked on the way: a value
+        // of the wrong type crashes the app inside CFBundle's lookup, so only clean entries are copied,
+        // and a file that can't be read is left out.
         try fm.createDirectory(at: destination, withIntermediateDirectories: true)
         for file in try fm.contentsOfDirectory(at: source, includingPropertiesForKeys: nil) where !file.lastPathComponent.hasPrefix(".") {
-            try Data(contentsOf: file).write(to: destination.appendingPathComponent(file.lastPathComponent))
+            let name = file.lastPathComponent
+            guard let data = try? Data(contentsOf: file, options: .uncached), let clean = SafeTables.cleaned(data, name: name) else {
+                NSLog("Limba: skipped %@, which is not a valid strings table", name)
+                continue
+            }
+            try clean.write(to: destination.appendingPathComponent(name))
         }
         return fingerprint(source)
     }
@@ -254,9 +274,34 @@ public final class LimbaRuntime: ObservableObject, @unchecked Sendable {
 
     static let log = Logger(subsystem: "Limba", category: "runtime")
 
+    /// Reasons for the changes waiting to be applied, and whether a `refresh` is among them.
+    private var pendingReasons: [String] = []
+    private var pendingRebuild = false
+
+    /// Applies changes at most once every 50 ms. Every change makes SwiftUI render each view under
+    /// `.limba()` again and walks every AppKit window and menu, so a burst of commands or file events,
+    /// applied one by one, would keep the main thread busy for seconds.
     @MainActor
-    private func changed(_ reason: String) {
-        Self.log.info("revision \(self.revision + 1, privacy: .public): \(reason, privacy: .public)")
+    private func changed(_ reason: String, rebuild: Bool = false) {
+        pendingRebuild = pendingRebuild || rebuild
+        pendingReasons.append(reason)
+        guard pendingReasons.count == 1 else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            MainActor.assumeIsolated { self?.applyChanges() }
+        }
+    }
+
+    @MainActor
+    private func applyChanges() {
+        let reasons = pendingReasons
+        pendingReasons = []
+        guard !reasons.isEmpty else { return }
+        let summary = reasons.count > 3 ? "\(reasons.prefix(3).joined(separator: "; ")) and \(reasons.count - 3) more" : reasons.joined(separator: "; ")
+        Self.log.info("revision \(self.revision + 1, privacy: .public): \(summary, privacy: .public)")
+        if pendingRebuild {
+            pendingRebuild = false
+            rebuildToken += 1
+        }
         revision += 1
         AppKitRelocalizer.relocalizeEverything()
         NotificationCenter.default.post(name: .limbaDidChange, object: nil)
@@ -318,8 +363,7 @@ public final class LimbaRuntime: ObservableObject, @unchecked Sendable {
 
     @MainActor
     func refresh() {
-        rebuildToken += 1
-        changed("refresh")
+        changed("refresh", rebuild: true)
     }
 
     @MainActor
