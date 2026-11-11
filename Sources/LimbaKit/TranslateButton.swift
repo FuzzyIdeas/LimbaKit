@@ -139,7 +139,7 @@ public extension Limba {
         let name = "LimbaKit_LimbaKit.bundle"
         let places = [Bundle.main.resourceURL, Bundle.main.bundleURL, Bundle(for: BundleMarker.self).resourceURL]
         for place in places.compactMap({ $0 }) {
-            if let bundle = Bundle(url: place.appendingPathComponent(name)), let image = bundle.image(forResource: "Limba") {
+            if let bundle = Bundle(url: place.appendingPathComponent(name, isDirectory: true)), let image = bundle.image(forResource: "Limba") {
                 return image
             }
         }

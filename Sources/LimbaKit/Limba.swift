@@ -252,7 +252,7 @@ public final class LimbaRuntime: ObservableObject, @unchecked Sendable {
                 NSLog("Limba: skipped %@, which is not a valid strings table", name)
                 continue
             }
-            try clean.write(to: destination.appendingPathComponent(name))
+            try clean.write(to: destination.appendingPathComponent(name, isDirectory: false))
         }
         return fingerprint(source)
     }
@@ -445,7 +445,9 @@ public final class LimbaRuntime: ObservableObject, @unchecked Sendable {
         let seen = LBHook.seenTableKeys().union(own)
         let (pid, language, revision, probe, deepLinks) = (getpid(), language, revision, probe, deepLinks.map(\.link))
         let resources = LimbaPaths.resources(of: bundle.bundleURL)
-        let url = folder.appendingPathComponent(LimbaProtocol.stateFile)
+        // isDirectory: false keeps Foundation from calling lstat on the main thread to find out,
+        // which blocked for 30 s while the disk was busy.
+        let url = folder.appendingPathComponent(LimbaProtocol.stateFile, isDirectory: false)
         let bundleIdentifier = bundleIdentifier
         // Parsing the shipped catalogs (once) and writing the file both stay off the main thread.
         Self.ioQueue.async {

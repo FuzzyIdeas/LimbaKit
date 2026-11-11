@@ -111,7 +111,7 @@ public enum StringsFiles {
     public static func writeAtomically(_ data: Data, to url: URL) throws {
         let fm = FileManager.default
         try fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        let tmp = url.deletingLastPathComponent().appendingPathComponent(".\(url.lastPathComponent).\(UUID().uuidString).tmp")
+        let tmp = url.deletingLastPathComponent().appendingPathComponent(".\(url.lastPathComponent).\(UUID().uuidString).tmp", isDirectory: false)
         try data.write(to: tmp)
         // rename(2) replaces the destination atomically on the same volume. replaceItemAt does
         // much more (it resolves both files by ID through fsgetpath) and was seen blocking for 30 s.
