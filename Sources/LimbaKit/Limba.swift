@@ -134,26 +134,54 @@ public final class LimbaRuntime: ObservableObject, @unchecked Sendable {
 
         let fm = FileManager.default
         let folder = LimbaPaths.translationsFolder(bundleIdentifier: bundleIdentifier)
-        try? fm.createDirectory(at: folder, withIntermediateDirectories: true)
         self.folder = folder
 
-        let stageRoot = fm.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        // Each launch copies into its own folder, so the copies of earlier launches can be removed in
+        // the background instead of before the first window draws.
+        let appStages = fm.urls(for: .cachesDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Limba", isDirectory: true)
             .appendingPathComponent(bundleIdentifier, isDirectory: true)
-        try? fm.removeItem(at: stageRoot)
+        let stageRoot = appStages.appendingPathComponent("\(getpid())", isDirectory: true)
         self.stageRoot = stageRoot
-
-        languages = LimbaPaths.languages(in: folder)
-        if let saved = UserDefaults.standard.string(forKey: LimbaProtocol.languageDefaultsKey), !saved.isEmpty {
-            // Synchronous on purpose: the translation has to be in place before the first window draws.
-            activate(saved, synchronously: true)
+        Self.ioQueue.async {
+            let old = (try? fm.contentsOfDirectory(at: appStages, includingPropertiesForKeys: nil)) ?? []
+            for url in old where url.lastPathComponent != stageRoot.lastPathComponent {
+                try? fm.removeItem(at: url)
+            }
         }
 
-        watcher = DirectoryWatcher(url: folder) { [weak self] paths in
-            Task { @MainActor in self?.filesChanged(paths) }
+        if let saved = UserDefaults.standard.string(forKey: LimbaProtocol.languageDefaultsKey), !saved.isEmpty {
+            // Synchronous on purpose: the translation has to be in place before the first window draws.
+            try? fm.createDirectory(at: folder, withIntermediateDirectories: true)
+            languages = LimbaPaths.languages(in: folder)
+            activate(saved, synchronously: true)
+            watch(folder)
+        } else {
+            // Without a chosen translation nothing has to load before the first window, so the folder
+            // is created and listed off the main thread: either call can block for 30 s on a busy disk.
+            Self.ioQueue.async { [weak self] in
+                try? fm.createDirectory(at: folder, withIntermediateDirectories: true)
+                let found = LimbaPaths.languages(in: folder)
+                DispatchQueue.main.async {
+                    MainActor.assumeIsolated {
+                        guard let self else { return }
+                        if self.languages.isEmpty { self.languages = found }
+                        self.watch(folder)
+                    }
+                }
+            }
         }
         listen()
         scheduleState(after: 0.5)
+    }
+
+    /// Starts watching the translations folder, after it exists.
+    @MainActor
+    private func watch(_ folder: URL) {
+        guard watcher == nil else { return }
+        watcher = DirectoryWatcher(url: folder) { [weak self] paths in
+            Task { @MainActor in self?.filesChanged(paths) }
+        }
     }
 
     // MARK: Language
@@ -211,14 +239,14 @@ public final class LimbaRuntime: ObservableObject, @unchecked Sendable {
 
         // A copy that never becomes the overlay is removed, or it stays in Caches until the next launch.
         let discard = { Self.ioQueue.async { try? FileManager.default.removeItem(at: stage) } }
-        let finish: @MainActor (Result<[String], Error>) -> Void = { [weak self] result in
+        let finish: @MainActor (Result<Staged, Error>) -> Void = { [weak self] result in
             guard let self, id == self.activation else {
                 discard()
                 return
             }
             switch result {
-            case let .success(fingerprint):
-                self.install(stage, language: requested, fingerprint: fingerprint)
+            case let .success(staged):
+                self.install(staged, language: requested)
             case let .failure(error):
                 discard()
                 NSLog("Limba: could not load %@: %@", requested, error.localizedDescription)
@@ -237,8 +265,16 @@ public final class LimbaRuntime: ObservableObject, @unchecked Sendable {
         }
     }
 
-    /// Copies `<language>.lproj` into `stage` and returns the fingerprint of the source files.
-    private static func copy(_ source: URL, toStage stage: URL, language: String) throws -> [String] {
+    /// A finished copy: its folder, the bundle that reads it, and the fingerprint of the source files.
+    private struct Staged: @unchecked Sendable {
+        let url: URL
+        let bundle: Bundle?
+        let fingerprint: [String]
+    }
+
+    /// Copies `<language>.lproj` into `stage`. The bundle is opened here too, since opening it reads
+    /// the folder from disk, and this runs on `ioQueue` for every change after launch.
+    private static func copy(_ source: URL, toStage stage: URL, language: String) throws -> Staged {
         let fm = FileManager.default
         let destination = LimbaPaths.lproj(language, in: stage)
         // Read and write the bytes instead of copyItem: an APFS clone shows up as an FSEvent on the
@@ -254,18 +290,18 @@ public final class LimbaRuntime: ObservableObject, @unchecked Sendable {
             }
             try clean.write(to: destination.appendingPathComponent(name, isDirectory: false))
         }
-        return fingerprint(source)
+        return Staged(url: stage, bundle: Bundle(path: stage.path), fingerprint: fingerprint(source))
     }
 
     @MainActor
-    private func install(_ stage: URL, language requested: String, fingerprint: [String]) {
-        guard let overlay = Bundle(path: stage.path) else { return }
+    private func install(_ staged: Staged, language requested: String) {
+        guard let overlay = staged.bundle else { return }
         LBHook.setOverlayBundle(overlay, language: requested)
         language = requested
-        loadedFingerprint = fingerprint
+        loadedFingerprint = staged.fingerprint
 
         // Keep the previous copy for a moment: a lookup on another thread may still be reading it.
-        stages.append(stage)
+        stages.append(staged.url)
         while stages.count > 2 {
             let old = stages.removeFirst()
             Self.ioQueue.async { try? FileManager.default.removeItem(at: old) }
