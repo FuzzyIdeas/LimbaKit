@@ -16,10 +16,11 @@ enum AppKitRelocalizer {
     private static var cachedFormats: (count: Int, index: FormatIndex)?
 
     private static func formatIndex() -> FormatIndex {
-        let values = LBHook.formatValues()
-        if let cachedFormats, cachedFormats.count == values.count { return cachedFormats.index }
-        let index = FormatIndex(values)
-        cachedFormats = (values.count, index)
+        // The count is read without copying the formats, so opening a menu stays cheap.
+        let count = Int(LBHook.formatValuesCount)
+        if let cachedFormats, cachedFormats.count == count { return cachedFormats.index }
+        let index = FormatIndex(LBHook.formatValues())
+        cachedFormats = (count, index)
         return index
     }
 
@@ -133,9 +134,20 @@ struct FormatIndex {
         let regex: NSRegularExpression
         let positions: [Int]
         let tableKey: String
+        /// The literal text before the first placeholder and after the last one, checked before the
+        /// regex: most text on screen fails one of them, and a regex for every format on every menu
+        /// item made menus slow to open in apps with many formats.
+        let prefix: String
+        let suffix: String
     }
 
     private let entries: [Entry]
+    /// Texts already matched against this index, and the result. One index serves one set of formats.
+    private let matches = Matches()
+
+    private final class Matches {
+        var results: [String: (String, [Int: String])?] = [:]
+    }
 
     init(_ formats: [String: String]) {
         entries = formats.compactMap { format, tableKey in
@@ -150,16 +162,29 @@ struct FormatIndex {
                 positions.append(spec.position ?? (i + 1))
                 cursor = spec.range.upperBound
             }
-            pattern += NSRegularExpression.escapedPattern(for: String(format[cursor...]).replacingOccurrences(of: "%%", with: "%")) + "$"
+            let tail = String(format[cursor...]).replacingOccurrences(of: "%%", with: "%")
+            pattern += NSRegularExpression.escapedPattern(for: tail) + "$"
             guard let regex = try? NSRegularExpression(pattern: pattern, options: [.dotMatchesLineSeparators]) else { return nil }
-            return Entry(regex: regex, positions: positions, tableKey: tableKey)
+            let head = String(format[..<specifiers[0].range.lowerBound]).replacingOccurrences(of: "%%", with: "%")
+            return Entry(regex: regex, positions: positions, tableKey: tableKey, prefix: head, suffix: tail)
         }
     }
 
     /// The key of the format that produced `text`, and its arguments by position.
     func match(_ text: String) -> (String, [Int: String])? {
+        if let known = matches.results[text] { return known }
+        let result = findMatch(text)
+        if matches.results.count >= 5000 { matches.results.removeAll() }
+        matches.results[text] = result
+        return result
+    }
+
+    private func findMatch(_ text: String) -> (String, [Int: String])? {
         let range = NSRange(text.startIndex..., in: text)
-        for entry in entries {
+        let ns = text as NSString
+        // NSString compares UTF-16 units like the regex does, where String would compare whole characters.
+        // It also answers false for an empty prefix or suffix, so those are skipped.
+        for entry in entries where (entry.prefix.isEmpty || ns.hasPrefix(entry.prefix)) && (entry.suffix.isEmpty || ns.hasSuffix(entry.suffix)) {
             guard let m = entry.regex.firstMatch(in: text, range: range) else { continue }
             var arguments: [Int: String] = [:]
             for (i, position) in entry.positions.enumerated() {

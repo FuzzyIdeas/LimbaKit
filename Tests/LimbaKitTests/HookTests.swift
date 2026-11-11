@@ -127,6 +127,23 @@ final class HookTests: XCTestCase {
         XCTAssertEqual(LBHook.tableKey(forValue: "Salut"), "Localizable\u{1F}Hello")
         XCTAssertTrue(LBHook.seenTableKeys().contains("Localizable\u{1F}Not in any catalog"))
     }
+
+    func testWarmedOverlayServesLookups() throws {
+        let overlay = try makeOverlay(["Hello": "Salut"])
+        LBHook.warm(overlay, language: "ro", tables: ["Localizable", "Missing"])
+        LBHook.setOverlayBundle(overlay, language: "ro")
+        XCTAssertEqual(appBundle.localizedString(forKey: "Hello", value: nil, table: nil), "Salut")
+    }
+
+    func testOnlyFormatsAreKeptAsFormats() throws {
+        let before = LBHook.formatValuesCount
+        LBHook.setOverlayBundle(try makeOverlay(["Hello": "Salut", "%lld items": "%lld elemente"]), language: "ro")
+        _ = appBundle.localizedString(forKey: "Hello", value: nil, table: nil)
+        _ = appBundle.localizedString(forKey: "%lld items", value: nil, table: nil)
+        XCTAssertEqual(LBHook.formatValues()["%lld elemente"], "Localizable\u{1F}%lld items")
+        XCTAssertNil(LBHook.formatValues()["Salut"])
+        XCTAssertEqual(LBHook.formatValuesCount, before + 1)
+    }
 }
 
 final class FormatIndexTests: XCTestCase {
@@ -137,5 +154,19 @@ final class FormatIndexTests: XCTestCase {
         XCTAssertEqual(args, [1: "3", 2: "Downloads"])
         XCTAssertEqual(FormatIndex.fill("În %2$@ sunt %1$lld fișiere", with: args), "În Downloads sunt 3 fișiere")
         XCTAssertEqual(FormatIndex.fill("%lld fișiere în %@", with: args), "3 fișiere în Downloads")
+    }
+
+    func testTextOutsideTheLiteralEdgesDoesNotMatch() throws {
+        let index = FormatIndex([
+            "Open %@": "Localizable\u{1F}Open %@",
+            "%lld%% done": "Localizable\u{1F}%lld%% done",
+        ])
+        XCTAssertEqual(index.match("Open Finder")?.1, [1: "Finder"])
+        XCTAssertNil(index.match("Close Finder"))
+        XCTAssertEqual(index.match("40% done")?.1, [1: "40"])
+        XCTAssertNil(index.match("40% left"))
+        // A second lookup of the same text gives the same answer from the cache.
+        XCTAssertEqual(index.match("Open Finder")?.1, [1: "Finder"])
+        XCTAssertNil(index.match("Close Finder"))
     }
 }

@@ -15,6 +15,9 @@ static BOOL gMarkers;
 static NSMutableDictionary<NSString *, NSNumber *> *gMarkerIDs;
 static NSMutableDictionary<NSNumber *, NSString *> *gMarkerTable;
 static NSMutableDictionary<NSString *, NSString *> *gValueToKey;
+// The values of gValueToKey that hold a format placeholder, kept apart so that a menu opening doesn't
+// scan every remembered value to find them.
+static NSMutableDictionary<NSString *, NSString *> *gFormatToKey;
 static NSMutableSet<NSString *> *gSeen;
 static NSMutableArray<NSString *> *gLog;
 // Overlay results by lookup, for the current overlay only. Every lookup that names a language makes
@@ -123,6 +126,10 @@ static void LBRemember(id value, NSString *tableKey) {
     if (usable) {
         if (gValueToKey.count >= kMaxRemembered) [gValueToKey removeAllObjects];
         gValueToKey[s] = tableKey;
+        if ([s rangeOfString:@"%"].location != NSNotFound) {
+            if (gFormatToKey.count >= kMaxRemembered) [gFormatToKey removeAllObjects];
+            gFormatToKey[s] = tableKey;
+        }
     }
     os_unfair_lock_unlock(&gLock);
 }
@@ -261,6 +268,7 @@ static BOOL LBAdd(Class sub, Class sup, NSString *name, NSString *expectedTypes,
     gMarkerIDs = [NSMutableDictionary new];
     gMarkerTable = [NSMutableDictionary new];
     gValueToKey = [NSMutableDictionary new];
+    gFormatToKey = [NSMutableDictionary new];
     gSeen = [NSMutableSet new];
     gLog = [NSMutableArray new];
 }
@@ -407,6 +415,20 @@ static BOOL LBAdd(Class sub, Class sup, NSString *name, NSString *expectedTypes,
     os_unfair_lock_unlock(&gLock);
 }
 
++ (void)warmBundle:(NSBundle *)bundle language:(NSString *)language tables:(NSArray<NSString *> *)tables {
+    // The same calls as LBOverlayString, so the tables land in the cache that its lookups read.
+    SEL single = NSSelectorFromString(@"localizedStringForKey:value:table:localization:");
+    for (NSString *table in tables) {
+        if (@available(macOS 15.4, *)) {
+            [bundle localizedStringForKey:kMissing value:kMissing table:table localizations:@[ language ]];
+        } else if ([bundle respondsToSelector:single]) {
+            ((LBString4)objc_msgSend)(bundle, single, kMissing, kMissing, table, language);
+        } else {
+            [bundle localizedStringForKey:kMissing value:kMissing table:table];
+        }
+    }
+}
+
 + (NSBundle *)overlayBundle {
     NSBundle *b;
     LBSnapshot(&b, NULL, NULL);
@@ -438,13 +460,17 @@ static BOOL LBAdd(Class sub, Class sup, NSString *name, NSString *expectedTypes,
 }
 
 + (NSDictionary<NSString *, NSString *> *)formatValues {
-    NSMutableDictionary *out = [NSMutableDictionary dictionary];
     os_unfair_lock_lock(&gLock);
-    [gValueToKey enumerateKeysAndObjectsUsingBlock:^(NSString *value, NSString *tk, BOOL *stop) {
-        if ([value rangeOfString:@"%"].location != NSNotFound) out[value] = tk;
-    }];
+    NSDictionary *out = [gFormatToKey copy];
     os_unfair_lock_unlock(&gLock);
     return out;
+}
+
++ (NSUInteger)formatValuesCount {
+    os_unfair_lock_lock(&gLock);
+    NSUInteger n = gFormatToKey.count;
+    os_unfair_lock_unlock(&gLock);
+    return n;
 }
 
 + (NSSet<NSString *> *)seenTableKeys {

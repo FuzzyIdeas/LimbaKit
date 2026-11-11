@@ -21,6 +21,11 @@ NS_ASSUME_NONNULL_BEGIN
 @property (class, readonly, nullable) NSBundle *overlayBundle;
 @property (class, readonly, nullable) NSString *overlayLanguage;
 
+/// Makes `bundle` read and parse each of `tables` for `language`, with the same lookup that the hook
+/// makes. The first lookup in a table loads the whole file and the next ones are served from memory,
+/// so calling this off the main thread keeps that first load away from the app's first draw.
++ (void)warmBundle:(NSBundle *)bundle language:(NSString *)language tables:(NSArray<NSString *> *)tables;
+
 /// While true, every resolved string ends with an invisible marker that names its table and key.
 @property (class) BOOL markersEnabled;
 /// Marker number to "table" + U+001F + "key".
@@ -30,6 +35,8 @@ NS_ASSUME_NONNULL_BEGIN
 + (nullable NSString *)tableKeyForValue:(NSString *)value;
 /// Remembered values that contain a format placeholder (`%@`, `%lld`), for matching formatted AppKit text.
 + (NSDictionary<NSString *, NSString *> *)formatValues;
+/// How many values are in `formatValues`, without copying them.
+@property (class, readonly) NSUInteger formatValuesCount;
 /// Every "table" + U+001F + "key" looked up since launch.
 + (NSSet<NSString *> *)seenTableKeys;
 

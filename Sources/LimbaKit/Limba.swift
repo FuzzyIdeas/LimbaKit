@@ -143,19 +143,9 @@ public final class LimbaRuntime: ObservableObject, @unchecked Sendable {
             .appendingPathComponent(bundleIdentifier, isDirectory: true)
         let stageRoot = appStages.appendingPathComponent("\(getpid())", isDirectory: true)
         self.stageRoot = stageRoot
-        Self.ioQueue.async {
-            let old = (try? fm.contentsOfDirectory(at: appStages, includingPropertiesForKeys: nil)) ?? []
-            for url in old where url.lastPathComponent != stageRoot.lastPathComponent {
-                try? fm.removeItem(at: url)
-            }
-        }
 
         if let saved = UserDefaults.standard.string(forKey: LimbaProtocol.languageDefaultsKey), !saved.isEmpty {
-            // Synchronous on purpose: the translation has to be in place before the first window draws.
-            try? fm.createDirectory(at: folder, withIntermediateDirectories: true)
-            languages = LimbaPaths.languages(in: folder)
-            activate(saved, synchronously: true)
-            watch(folder)
+            loadAtLaunch(saved, folder: folder)
         } else {
             // Without a chosen translation nothing has to load before the first window, so the folder
             // is created and listed off the main thread: either call can block for 30 s on a busy disk.
@@ -171,8 +161,86 @@ public final class LimbaRuntime: ObservableObject, @unchecked Sendable {
                 }
             }
         }
+        // Queued after the launch load, which the launch may be waiting for.
+        Self.ioQueue.async {
+            let old = (try? fm.contentsOfDirectory(at: appStages, includingPropertiesForKeys: nil)) ?? []
+            for url in old where url.lastPathComponent != stageRoot.lastPathComponent {
+                try? fm.removeItem(at: url)
+            }
+        }
         listen()
         scheduleState(after: 0.5)
+    }
+
+    /// The result of the launch load, taken once by whichever of its two callers comes first.
+    private final class LaunchLoad: @unchecked Sendable {
+        private let lock = NSLock()
+        private var value: (found: [String], result: Result<Staged, Error>?)?
+
+        func set(_ found: [String], _ result: Result<Staged, Error>?) {
+            lock.lock(); value = (found, result); lock.unlock()
+        }
+
+        func take() -> (found: [String], result: Result<Staged, Error>?)? {
+            lock.lock(); defer { lock.unlock() }
+            let v = value
+            value = nil
+            return v
+        }
+    }
+
+    /// Loads the chosen translation at launch. The first window should already be translated, so the
+    /// launch waits for the copy, but for one second at most: on a disk that stalls, the app starts in
+    /// its built-in language and switches to the translation once the copy is ready.
+    @MainActor
+    private func loadAtLaunch(_ saved: String, folder: URL) {
+        activation += 1
+        let id = activation
+        newest.withLock { $0.activation = id }
+        guard let stageRoot else { return }
+        stageCounter += 1
+        let stage = stageRoot.appendingPathComponent("\(stageCounter)", isDirectory: true)
+        let load = LaunchLoad()
+        let done = DispatchSemaphore(value: 0)
+        // The main thread waits on this block, so it runs at the main thread's priority.
+        Self.ioQueue.async(qos: .userInitiated, flags: .enforceQoS) { [weak self] in
+            try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let found = LimbaPaths.languages(in: folder)
+            let result = found.contains(saved)
+                ? Result { try Self.copy(LimbaPaths.lproj(saved, in: folder), toStage: stage, language: saved) }
+                : nil
+            load.set(found, result)
+            done.signal()
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated { self?.finishLaunchLoad(load, id: id, language: saved, stage: stage, late: true) }
+            }
+        }
+        if done.wait(timeout: .now() + 1) == .success {
+            finishLaunchLoad(load, id: id, language: saved, stage: stage, late: false)
+        } else {
+            NSLog("Limba: loading %@ took more than a second, so the app starts in its built-in language", saved)
+        }
+        watch(folder)
+    }
+
+    @MainActor
+    private func finishLaunchLoad(_ load: LaunchLoad, id: Int, language saved: String, stage: URL, late: Bool) {
+        // Called twice when the load finished in time; the second call finds nothing to take.
+        guard let (found, result) = load.take() else { return }
+        languages = found
+        guard let result else { return }
+        guard id == activation else {
+            Self.ioQueue.async { try? FileManager.default.removeItem(at: stage) }
+            return
+        }
+        switch result {
+        case let .success(staged):
+            install(staged, language: saved)
+            if late { changed("\(saved) loaded after launch") }
+        case let .failure(error):
+            Self.ioQueue.async { try? FileManager.default.removeItem(at: stage) }
+            NSLog("Limba: could not load %@: %@", saved, error.localizedDescription)
+        }
     }
 
     /// Starts watching the translations folder, after it exists.
@@ -218,11 +286,11 @@ public final class LimbaRuntime: ObservableObject, @unchecked Sendable {
     /// Copies the translation to a new folder and points the hook at it. NSBundle caches string tables
     /// per path for the life of the process, so each revision gets a path it has never seen.
     ///
-    /// The copy runs on `ioQueue` unless `synchronously` is set, and `then` runs on the main thread once
-    /// the hook points at the new copy (or the copy failed). An activation that a newer one replaced
-    /// while it copied does nothing, and its `then` never runs.
+    /// The copy runs on `ioQueue`, and `then` runs on the main thread once the hook points at the new
+    /// copy (or the copy failed). An activation that a newer one replaced while it copied does nothing,
+    /// and its `then` never runs.
     @MainActor
-    private func activate(_ requested: String?, synchronously: Bool = false, then: (@MainActor () -> Void)? = nil) {
+    private func activate(_ requested: String?, then: (@MainActor () -> Void)? = nil) {
         activation += 1
         let current = activation
         newest.withLock { $0.activation = current }
@@ -253,10 +321,6 @@ public final class LimbaRuntime: ObservableObject, @unchecked Sendable {
             }
             then?()
         }
-        if synchronously {
-            finish(Result { try Self.copy(source, toStage: stage, language: requested) })
-            return
-        }
         Self.ioQueue.async { [newest] in
             // A newer activation replaced this one while it waited: its copy would be thrown away.
             guard newest.withLock({ $0.activation }) == id else { return }
@@ -272,8 +336,9 @@ public final class LimbaRuntime: ObservableObject, @unchecked Sendable {
         let fingerprint: [String]
     }
 
-    /// Copies `<language>.lproj` into `stage`. The bundle is opened here too, since opening it reads
-    /// the folder from disk, and this runs on `ioQueue` for every change after launch.
+    /// Copies `<language>.lproj` into `stage`. The bundle is opened and its tables are loaded here
+    /// too, since both read from disk: the first lookup in a table reads and parses the whole file, and
+    /// it would otherwise happen on the main thread, when the app draws its first label.
     private static func copy(_ source: URL, toStage stage: URL, language: String) throws -> Staged {
         let fm = FileManager.default
         let destination = LimbaPaths.lproj(language, in: stage)
@@ -282,6 +347,7 @@ public final class LimbaRuntime: ObservableObject, @unchecked Sendable {
         // of the wrong type crashes the app inside CFBundle's lookup, so only clean entries are copied,
         // and a file that can't be read is left out.
         try fm.createDirectory(at: destination, withIntermediateDirectories: true)
+        var tables = Set<String>()
         for file in try fm.contentsOfDirectory(at: source, includingPropertiesForKeys: nil) where !file.lastPathComponent.hasPrefix(".") {
             let name = file.lastPathComponent
             guard let data = try? Data(contentsOf: file, options: .uncached), let clean = SafeTables.cleaned(data, name: name) else {
@@ -289,8 +355,11 @@ public final class LimbaRuntime: ObservableObject, @unchecked Sendable {
                 continue
             }
             try clean.write(to: destination.appendingPathComponent(name, isDirectory: false))
+            tables.insert((name as NSString).deletingPathExtension)
         }
-        return Staged(url: stage, bundle: Bundle(path: stage.path), fingerprint: fingerprint(source))
+        let bundle = Bundle(path: stage.path)
+        if let bundle { LBHook.warm(bundle, language: language, tables: tables.sorted()) }
+        return Staged(url: stage, bundle: bundle, fingerprint: fingerprint(source))
     }
 
     @MainActor
