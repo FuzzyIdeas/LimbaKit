@@ -168,16 +168,28 @@ public struct AppManifest: Codable, Sendable, Equatable {
     }
 }
 
+/// Dates in the protocol's files. A project holds one date per translation, and ISO8601DateFormatter
+/// goes through ICU for every date (a large project took a second to read), so the Swift format styles
+/// are used instead: they write the same text and parse it without ICU.
+enum ISODates {
+    static let fractional = Date.ISO8601FormatStyle(includingFractionalSeconds: true)
+    static let whole = Date.ISO8601FormatStyle()
+
+    static func string(_ date: Date) -> String { fractional.format(date) }
+
+    static func date(_ text: String) -> Date? {
+        (try? fractional.parse(text)) ?? (try? whole.parse(text))
+    }
+}
+
 public extension JSONEncoder {
     /// ISO 8601 dates with milliseconds, so a reader can order two writes made within one second.
     static var limba: JSONEncoder {
         let e = JSONEncoder()
         e.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         e.dateEncodingStrategy = .custom { date, encoder in
-            let f = ISO8601DateFormatter()
-            f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
             var c = encoder.singleValueContainer()
-            try c.encode(f.string(from: date))
+            try c.encode(ISODates.string(date))
         }
         return e
     }
@@ -190,11 +202,7 @@ public extension JSONDecoder {
         d.dateDecodingStrategy = .custom { decoder in
             let c = try decoder.singleValueContainer()
             let s = try c.decode(String.self)
-            let f = ISO8601DateFormatter()
-            f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            if let date = f.date(from: s) { return date }
-            f.formatOptions = [.withInternetDateTime]
-            if let date = f.date(from: s) { return date }
+            if let date = ISODates.date(s) { return date }
             throw DecodingError.dataCorruptedError(in: c, debugDescription: "Not an ISO 8601 date: \(s)")
         }
         return d

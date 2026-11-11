@@ -49,3 +49,23 @@ final class SafeTablesTests: XCTestCase {
         XCTAssertEqual(clean?.keys.sorted(), ["%lld files"])
     }
 }
+
+final class DateCodingTests: XCTestCase {
+    struct Box: Codable, Equatable { let d: Date }
+
+    func testSameTextAsTheFormatter() throws {
+        let date = Date(timeIntervalSinceReferenceDate: 815_000_000.125)
+        let old = ISO8601DateFormatter()
+        old.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let json = String(decoding: try JSONEncoder.limba.encode(Box(d: date)), as: UTF8.self)
+        XCTAssertTrue(json.contains(old.string(from: date)), json)
+    }
+
+    func testReadsBothForms() throws {
+        for text in ["2026-11-11T08:44:37.144Z", "2026-11-11T08:44:37Z", "2026-11-11T10:44:37+02:00"] {
+            let box = try JSONDecoder.limba.decode(Box.self, from: Data(#"{"d":"\#(text)"}"#.utf8))
+            XCTAssertEqual(box.d.timeIntervalSince1970, 1_794_386_677, accuracy: 1, text)
+        }
+        XCTAssertThrowsError(try JSONDecoder.limba.decode(Box.self, from: Data(#"{"d":"yesterday"}"#.utf8)))
+    }
+}
