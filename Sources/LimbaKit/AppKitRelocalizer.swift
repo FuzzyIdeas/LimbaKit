@@ -153,6 +153,11 @@ struct FormatIndex {
         entries = formats.compactMap { format, tableKey in
             let specifiers = FormatSpecifiers.parse(format)
             guard !specifiers.isEmpty, !specifiers.contains(where: { $0.type.hasPrefix("#@") }) else { return nil }
+            // A format whose fixed text has no letters (`%@: %@`, `%@ - %@`) matches almost any text,
+            // such as a file name shown in a label, and rewriting that text would change what it shows.
+            var literal = format
+            for spec in specifiers.reversed() { literal.removeSubrange(spec.range) }
+            guard literal.contains(where: \.isLetter) else { return nil }
             var pattern = "^"
             var cursor = format.startIndex
             var positions: [Int] = []

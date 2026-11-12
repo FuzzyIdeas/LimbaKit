@@ -69,3 +69,50 @@ final class DateCodingTests: XCTestCase {
         XCTAssertThrowsError(try JSONDecoder.limba.decode(Box.self, from: Data(#"{"d":"yesterday"}"#.utf8)))
     }
 }
+
+final class PlaceholderTests: XCTestCase {
+    func plist(_ object: Any) -> Data {
+        try! PropertyListSerialization.data(fromPropertyList: object, format: .xml, options: 0)
+    }
+
+    func testCompatibleTranslations() {
+        XCTAssertTrue(FormatSpecifiers.compatible("%lld fișiere", with: "%lld files"))
+        XCTAssertTrue(FormatSpecifiers.compatible("%d fișiere", with: "%lld files"))
+        XCTAssertTrue(FormatSpecifiers.compatible("În %2$@ sunt %1$lld fișiere", with: "%lld files in %@"))
+        XCTAssertTrue(FormatSpecifiers.compatible("Fișiere", with: "%lld files"))
+        XCTAssertTrue(FormatSpecifiers.compatible("100% gata", with: "100% done"))
+        XCTAssertTrue(FormatSpecifiers.compatible("%#@count@", with: "%lld files"))
+    }
+
+    func testTranslationsThatWouldCrash() {
+        XCTAssertFalse(FormatSpecifiers.compatible("%@ fișiere", with: "%lld files"))
+        XCTAssertFalse(FormatSpecifiers.compatible("%lld fișiere în %@", with: "%lld files"))
+        XCTAssertFalse(FormatSpecifiers.compatible("%2$@", with: "%@"))
+        XCTAssertFalse(FormatSpecifiers.compatible("%@", with: "Settings"))
+        XCTAssertFalse(FormatSpecifiers.compatible("%1$@ %1$lld", with: "%@"))
+    }
+
+    func testStringsDropOnlyTheBadValues() {
+        let data = plist(["%lld files": "%@ fișiere", "%lld items": "%lld elemente", "Open": "Deschide %@", "key.title": "Titlu %@"])
+        let clean = SafeTables.strings(from: data, sources: ["key.title": "Title %@"])
+        XCTAssertEqual(clean, ["%lld items": "%lld elemente", "key.title": "Titlu %@"])
+    }
+
+    func testStringsdictFormsMustReadTheCount() {
+        func entry(_ one: String, _ other: String) -> [String: Any] {
+            ["NSStringLocalizedFormatKey": "%#@count@",
+             "count": ["NSStringFormatSpecTypeKey": "NSStringPluralRuleType", "NSStringFormatValueTypeKey": "lld", "one": one, "other": other]]
+        }
+        let data = plist([
+            "%lld files": entry("un fișier", "%lld fișiere"),
+            "%lld songs": entry("o melodie", "%@ melodii"),
+            "%lld rows in %@": ["NSStringLocalizedFormatKey": "%#@count@",
+                                "count": ["NSStringFormatSpecTypeKey": "NSStringPluralRuleType", "NSStringFormatValueTypeKey": "lld",
+                                          "one": "un rând în %2$@", "other": "%lld rânduri în %2$@"]],
+        ])
+        let clean = SafeTables.stringsdict(from: data) ?? [:]
+        XCTAssertNotNil(clean["%lld files"])
+        XCTAssertNil(clean["%lld songs"])
+        XCTAssertNotNil(clean["%lld rows in %@"])
+    }
+}

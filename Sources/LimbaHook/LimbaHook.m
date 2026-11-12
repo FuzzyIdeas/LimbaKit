@@ -29,6 +29,12 @@ static NSMutableDictionary<NSString *, NSArray *> *gResults;
 // serves the overlay and adds a marker, the inner ones pass straight through.
 static __thread int tDepth;
 
+// Raises tDepth for the scope it is declared in, and lowers it again when the scope ends, even when an
+// Objective-C exception unwinds through the hook. Without that, a caught exception would leave the
+// thread at depth 1, and every later lookup on that thread would skip the translation.
+static void LBDepthExit(int *unused) { tDepth--; }
+#define LB_DEPTH_SCOPE __attribute__((cleanup(LBDepthExit), unused)) int lbDepthScope = ++tDepth
+
 #pragma mark - Helpers
 
 static NSString *LBTableKey(NSString *table, NSString *key) {
@@ -294,13 +300,12 @@ static BOOL LBAdd(Class sub, Class sup, NSString *name, NSString *expectedTypes,
             SEL s1 = NSSelectorFromString(n1);
             NSString *(*o1)(id, SEL, NSString *, NSString *, NSString *) = (void *)class_getMethodImplementation(sup, s1);
             LBAdd(sub, sup, n1, @"@@:@@@", ^NSString *(id me, NSString *key, NSString *value, NSString *table) {
-                tDepth++;
+                LB_DEPTH_SCOPE;
                 BOOL outer = tDepth == 1 && key;
                 NSString *tk = outer ? LBTableKey(table, key) : nil;
                 NSString *r = outer ? LBOverlayString(key, table) : nil;
                 if (!r) r = o1(me, s1, key, value, table);
                 if (outer) { r = LBMark(r, tk, NO); LBRemember(r, tk); }
-                tDepth--;
                 return r;
             }, installed);
 
@@ -309,14 +314,13 @@ static BOOL LBAdd(Class sub, Class sup, NSString *name, NSString *expectedTypes,
                 SEL s = NSSelectorFromString(n);
                 LBString4 o = (LBString4)class_getMethodImplementation(sup, s);
                 LBAdd(sub, sup, n, @"@@:@@@@", ^NSString *(id me, NSString *key, NSString *value, NSString *table, id loc) {
-                    tDepth++;
+                    LB_DEPTH_SCOPE;
                     BOOL outer = tDepth == 1 && key;
                     NSString *tk = outer ? LBTableKey(table, key) : nil;
                     NSString *r = outer ? LBOverlayString(key, table) : nil;
                     if (!r) r = o(me, s, key, value, table, loc);
                     if (outer) { r = LBMark(r, tk, NO); LBRemember(r, tk); }
-                    tDepth--;
-                    return r;
+                        return r;
                 }, installed);
             }
 
@@ -326,13 +330,12 @@ static BOOL LBAdd(Class sub, Class sup, NSString *name, NSString *expectedTypes,
             SEL s6 = NSSelectorFromString(n6);
             LBNoCache o6 = (LBNoCache)class_getMethodImplementation(sup, s6);
             LBAdd(sub, sup, n6, @"@@:@@@@^@^@", ^id(id me, NSString *key, NSString *value, NSString *table, NSArray *bl, id __autoreleasing *locOut, id __autoreleasing *configOut) {
-                tDepth++;
+                LB_DEPTH_SCOPE;
                 BOOL outer = tDepth == 1 && key;
                 NSString *tk = outer ? LBTableKey(table, key) : nil;
                 id r = outer ? LBOverlayNoCache(s6, @"n", key, table, bl, locOut, configOut) : nil;
                 if (!r) r = o6(me, s6, key, value, table, bl, locOut, configOut);
                 if (outer) { r = LBMark(r, tk, YES); LBRemember(r, tk); }
-                tDepth--;
                 return r;
             }, installed);
 
@@ -343,13 +346,12 @@ static BOOL LBAdd(Class sub, Class sup, NSString *name, NSString *expectedTypes,
             SEL s9 = NSSelectorFromString(n9);
             LBNoCache o9 = (LBNoCache)class_getMethodImplementation(sup, s9);
             LBAdd(sub, sup, n9, @"@@:@@@@^@^@", ^id(id me, NSString *key, NSString *value, NSString *table, NSArray *langs, id __autoreleasing *urlOut, id __autoreleasing *configOut) {
-                tDepth++;
+                LB_DEPTH_SCOPE;
                 BOOL outer = tDepth == 1 && key;
                 NSString *tk = outer ? LBTableKey(table, key) : nil;
                 id r = outer ? LBOverlayNoCache(s9, @"u", key, table, langs, urlOut, configOut) : nil;
                 if (!r) r = o9(me, s9, key, value, table, langs, urlOut, configOut);
                 if (outer) { r = LBMark(r, tk, YES); LBRemember(r, tk); }
-                tDepth--;
                 return r;
             }, installed);
 
@@ -357,13 +359,12 @@ static BOOL LBAdd(Class sub, Class sup, NSString *name, NSString *expectedTypes,
             SEL s5 = NSSelectorFromString(n5);
             LBFlagged o5 = (LBFlagged)class_getMethodImplementation(sup, s5);
             LBAdd(sub, sup, n5, @"@@:@@@@^@B", ^id(id me, NSString *key, NSString *value, NSString *table, NSArray *bl, NSString *__autoreleasing *locOut, BOOL preventMarkdown) {
-                tDepth++;
+                LB_DEPTH_SCOPE;
                 BOOL outer = tDepth == 1 && key;
                 NSString *tk = outer ? LBTableKey(table, key) : nil;
                 id r = outer ? LBOverlayFlagged(s5, key, table, bl, locOut, preventMarkdown) : nil;
                 if (!r) r = o5(me, s5, key, value, table, bl, locOut, preventMarkdown);
                 if (outer) { r = LBMark(r, tk, NO); LBRemember(r, tk); }
-                tDepth--;
                 return r;
             }, installed);
 
@@ -372,13 +373,12 @@ static BOOL LBAdd(Class sub, Class sup, NSString *name, NSString *expectedTypes,
             SEL s7 = NSSelectorFromString(n7);
             NSAttributedString *(*o7)(id, SEL, NSString *, NSString *, NSString *) = (void *)class_getMethodImplementation(sup, s7);
             LBAdd(sub, sup, n7, @"@@:@@@", ^NSAttributedString *(id me, NSString *key, NSString *value, NSString *table) {
-                tDepth++;
+                LB_DEPTH_SCOPE;
                 BOOL outer = tDepth == 1 && key;
                 NSString *tk = outer ? LBTableKey(table, key) : nil;
                 NSAttributedString *r = outer ? LBOverlayAttributed(key, table) : nil;
                 if (!r) r = o7(me, s7, key, value, table);
                 if (outer) { r = LBMark(r, tk, YES); LBRemember(r, tk); }
-                tDepth--;
                 return r;
             }, installed);
 
@@ -386,13 +386,12 @@ static BOOL LBAdd(Class sub, Class sup, NSString *name, NSString *expectedTypes,
             SEL s8 = NSSelectorFromString(n8);
             NSAttributedString *(*o8)(id, SEL, NSString *, NSString *, NSString *, NSString *) = (void *)class_getMethodImplementation(sup, s8);
             LBAdd(sub, sup, n8, @"@@:@@@@", ^NSAttributedString *(id me, NSString *key, NSString *value, NSString *table, NSString *loc) {
-                tDepth++;
+                LB_DEPTH_SCOPE;
                 BOOL outer = tDepth == 1 && key;
                 NSString *tk = outer ? LBTableKey(table, key) : nil;
                 NSAttributedString *r = outer ? LBOverlayAttributed(key, table) : nil;
                 if (!r) r = o8(me, s8, key, value, table, loc);
                 if (outer) { r = LBMark(r, tk, YES); LBRemember(r, tk); }
-                tDepth--;
                 return r;
             }, installed);
 

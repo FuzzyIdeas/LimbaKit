@@ -169,4 +169,10 @@ final class FormatIndexTests: XCTestCase {
         XCTAssertEqual(index.match("Open Finder")?.1, [1: "Finder"])
         XCTAssertNil(index.match("Close Finder"))
     }
+
+    func testFormatsWithoutLettersAreIgnored() {
+        let index = FormatIndex(["%@: %@": "Localizable\u{1F}%@: %@", "%@ - %@": "Localizable\u{1F}%@ - %@"])
+        XCTAssertNil(index.match("Invoice: March 2026.pdf"))
+        XCTAssertNil(index.match("Draft - final"))
+    }
 }

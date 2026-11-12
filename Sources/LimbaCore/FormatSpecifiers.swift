@@ -70,6 +70,38 @@ public enum FormatSpecifiers {
         }
     }
 
+    /// The type that each argument is read as, by position from 1, or nil when two placeholders read
+    /// the same argument as different types. A `%#@name@` variable counts as an integer.
+    public static func arguments(_ s: String) -> [Int: String]? {
+        var out: [Int: String] = [:]
+        for (i, spec) in parse(s).enumerated() {
+            // A `*` width or precision reads an extra argument; only an identical string is safe then.
+            if spec.raw.contains("*") { return nil }
+            let type = spec.type.hasPrefix("#@") ? "int" : normalize(spec.type)
+            let position = spec.position ?? (i + 1)
+            if let known = out[position], known != type { return nil }
+            out[position] = type
+        }
+        return out
+    }
+
+    /// True when `translation` reads only arguments that `source` passes, each as the same type, so
+    /// formatting it with the source's arguments can't read past them or misread one. A translation may
+    /// leave arguments out and reorder them with `%2$@`.
+    public static func compatible(_ translation: String, with source: String) -> Bool {
+        if translation == source { return true }
+        let wanted = parse(translation)
+        if wanted.isEmpty { return true }
+        if wanted.contains(where: { $0.raw.contains("*") }) { return signature(translation) == signature(source) }
+        guard let reads = arguments(translation), let passed = arguments(source) else { return false }
+        return reads.allSatisfy { position, type in
+            guard let given = passed[position] else { return false }
+            return given == type || (isWholeNumber(given) && isWholeNumber(type))
+        }
+    }
+
+    private static func isWholeNumber(_ type: String) -> Bool { type == "int" || type == "uint" }
+
     /// The argument that the first integer placeholder reads, from 1: its `%2$` position when it has one,
     /// otherwise its place among the placeholders. A plural rule has to count that argument.
     public static func pluralArgument(_ s: String) -> Int? {

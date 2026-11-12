@@ -26,7 +26,7 @@ final class DirectoryWatcher {
     }
 
     private let sink: Sink
-    private var stream: FSEventStreamRef?
+    private let holder: StreamHolder
 
     init?(url: URL, latency: TimeInterval = 0.15, callback: @escaping ([String]) -> Void) {
         sink = Sink(callback: callback)
@@ -54,22 +54,42 @@ final class DirectoryWatcher {
                 if !sink.stopped { sink.callback(list) }
             }
         }
-        guard let stream = FSEventStreamCreate(
-            nil, handler, &context, [url.path] as CFArray,
-            FSEventStreamEventId(kFSEventStreamEventIdSinceNow), latency, flags
-        ) else { return nil }
-        self.stream = stream
-        FSEventStreamSetDispatchQueue(stream, Self.queue)
-        Self.queue.async { FSEventStreamStart(stream) }
+        // Created on the queue too: creating a stream resolves the path on disk.
+        let holder = StreamHolder()
+        self.holder = holder
+        let path = url.path
+        let sink = sink
+        Self.queue.async {
+            // The context holds the sink without retaining it until the stream exists, so the block
+            // keeps it alive: the watcher may be gone before the block runs.
+            let created = withExtendedLifetime(sink) {
+                FSEventStreamCreate(
+                    nil, handler, &context, [path] as CFArray,
+                    FSEventStreamEventId(kFSEventStreamEventIdSinceNow), latency, flags
+                )
+            }
+            guard let stream = created else { return }
+            holder.stream = stream
+            FSEventStreamSetDispatchQueue(stream, Self.queue)
+            FSEventStreamStart(stream)
+        }
     }
 
     deinit {
         sink.stopped = true
-        guard let stream else { return }
+        let holder = holder
+        // Runs after the block that created the stream, since the queue is serial.
         Self.queue.async {
+            guard let stream = holder.stream else { return }
             FSEventStreamStop(stream)
             FSEventStreamInvalidate(stream)
             FSEventStreamRelease(stream)
+            holder.stream = nil
         }
+    }
+
+    /// The stream, touched only on `queue`.
+    private final class StreamHolder: @unchecked Sendable {
+        var stream: FSEventStreamRef?
     }
 }

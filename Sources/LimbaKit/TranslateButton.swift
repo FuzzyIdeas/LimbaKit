@@ -30,6 +30,7 @@ public struct LimbaTranslateButton: View {
     private let title: LocalizedStringKey?
     private let titleLanguage: TitleLanguage
     @ObservedObject private var runtime = LimbaRuntime.shared
+    @ObservedObject private var icon = TranslatorIcon.shared
 
     public init(titleLanguage: TitleLanguage = .system) {
         title = nil
@@ -50,7 +51,7 @@ public struct LimbaTranslateButton: View {
                     Text(verbatim: TranslateButtonTitles.title(for: languages))
                 }
             } icon: {
-                Image(nsImage: Limba.translatorIcon)
+                Image(nsImage: icon.image)
                     .resizable()
                     .interpolation(.high)
                     .frame(width: 16, height: 16)
@@ -118,24 +119,12 @@ public extension Limba {
     }
 
     /// Limba's icon: the installed app's, or a copy kept in this package when Limba is not installed.
-    /// Looked up once: the button renders often, and each LaunchServices query can wait on lsd.
-    @MainActor static var translatorIcon: NSImage {
-        if let cachedIcon { return cachedIcon }
-        let icon: NSImage
-        if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: translatorBundleIdentifier) {
-            icon = NSWorkspace.shared.icon(forFile: url.path)
-        } else {
-            icon = bundledIcon ?? NSImage(systemSymbolName: "character.bubble", accessibilityDescription: nil) ?? NSImage()
-        }
-        cachedIcon = icon
-        return icon
-    }
-
-    @MainActor private static var cachedIcon: NSImage?
+    /// A symbol stands in until the icon is loaded in the background.
+    @MainActor static var translatorIcon: NSImage { TranslatorIcon.shared.image }
 
     /// Read from the package's resource bundle without `Bundle.module`, which stops the process when
-    /// the bundle is missing.
-    private static let bundledIcon: NSImage? = {
+    /// the bundle is missing. Reads from disk, so it is only used off the main thread.
+    fileprivate static let bundledIcon: NSImage? = {
         let name = "LimbaKit_LimbaKit.bundle"
         let places = [Bundle.main.resourceURL, Bundle.main.bundleURL, Bundle(for: BundleMarker.self).resourceURL]
         for place in places.compactMap({ $0 }) {
@@ -147,4 +136,43 @@ public extension Limba {
     }()
 
     private final class BundleMarker {}
+}
+
+/// Limba's icon, looked up once in the background. The LaunchServices query can wait on lsd and the
+/// icon is read from disk, and the button that shows it is drawn on the main thread.
+@MainActor
+final class TranslatorIcon: ObservableObject {
+    static let shared = TranslatorIcon()
+
+    @Published private(set) var loaded: NSImage?
+    private var started = false
+
+    var image: NSImage {
+        if let loaded { return loaded }
+        load()
+        return NSImage(systemSymbolName: "character.bubble", accessibilityDescription: nil) ?? NSImage()
+    }
+
+    private func load() {
+        guard !started else { return }
+        started = true
+        DispatchQueue.global(qos: .utility).async {
+            let workspace = NSWorkspace.shared
+            let icon: NSImage?
+            if let url = workspace.urlForApplication(withBundleIdentifier: Limba.translatorBundleIdentifier) {
+                icon = workspace.icon(forFile: url.path)
+            } else {
+                icon = Limba.bundledIcon
+            }
+            let found = icon.map { Box($0) }
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated { TranslatorIcon.shared.loaded = found?.image }
+            }
+        }
+    }
+
+    private final class Box: @unchecked Sendable {
+        let image: NSImage
+        init(_ image: NSImage) { self.image = image }
+    }
 }
