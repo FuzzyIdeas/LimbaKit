@@ -143,9 +143,13 @@ The model translates better when it knows what the app does. Add `Limba/app.json
   "context": "Users have one or more external monitors. Brightness is a percentage. Lid refers to a laptop lid.",
   "glossary": [
     { "term": "Sub-zero", "note": "Dimming below 0% by darkening the picture in software", "translate": false }
-  ]
+  ],
+  "maxLength": { "Adaptive": 10 }
 }
 ```
+
+`maxLength` sets the most characters that the translation of a string may have, by the string's key.
+Use it for text in a fixed space, like a badge or a short button.
 
 ### 5. Deep links (optional)
 

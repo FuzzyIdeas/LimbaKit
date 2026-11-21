@@ -52,13 +52,19 @@ When a key has no source value, the key itself is the source text, which is how 
   "glossary": [
     { "term": "Sub-zero", "note": "Dimming below 0% brightness by darkening the picture in software", "translate": false },
     { "term": "Sync Mode", "note": "Copies the built-in display's brightness to external monitors" }
-  ]
+  ],
+  "maxLength": { "Adaptive": 10 }
 }
 ```
 
 `description` and `context` are prose for the translation model. A glossary entry with `"translate":
 false` stays in the source language. Other entries explain a term so that the model picks the right
 meaning. The person translating can add their own notes on top. Those notes stay with their translator.
+
+`maxLength` is for text that sits in a fixed space, like a badge, a narrow column or a short button.
+It maps the key of a string, in any table, to the most characters that its translation may have. A
+placeholder like `%@` counts as one character. A comment in the String Catalog such as "max 12
+characters" sets a limit too. When both set one, Limba uses the limit in the manifest.
 
 A longer text can go in `Contents/Resources/Limba/context.md`, which translators append to
 `context`.

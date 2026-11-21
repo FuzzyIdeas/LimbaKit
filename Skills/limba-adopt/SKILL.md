@@ -118,7 +118,8 @@ as the title is translated. Note each one here, and in section 3 match the windo
      "glossary": [
        { "term": "AppName", "translate": false },
        { "term": "Feature name", "note": "what it means, so a model picks the right word" }
-     ]
+     ],
+     "maxLength": { "Adaptive": 10 }
    }
    ```
 
@@ -130,6 +131,10 @@ as the title is translated. Note each one here, and in section 3 match the windo
    Abbreviations in capitals (OSD, DDC) stay as
    written without an entry. Write one entry per term:
    an entry for "Spaces, Mission Control" matches no string.
+
+   `maxLength` maps a string's key to the most characters that its translation may have. Add an
+   entry for text in a fixed space that truncates when it grows: a badge, a narrow table column, a
+   segmented control, a menu bar title. Leave the field out when no text is cramped.
 
 4. Start Limba before any UI exists, on the main actor:
 

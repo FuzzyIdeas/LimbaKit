@@ -159,12 +159,15 @@ public struct AppManifest: Codable, Sendable, Equatable {
     public var description: String?
     public var context: String?
     public var glossary: [Term]?
+    /// The most characters that the translation of a string may have, by the string's key in any table.
+    public var maxLength: [String: Int]?
 
-    public init(description: String? = nil, context: String? = nil, glossary: [Term]? = nil) {
+    public init(description: String? = nil, context: String? = nil, glossary: [Term]? = nil, maxLength: [String: Int]? = nil) {
         self.protocol = LimbaProtocol.version
         self.description = description
         self.context = context
         self.glossary = glossary
+        self.maxLength = maxLength
     }
 }
 
